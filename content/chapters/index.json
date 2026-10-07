@@ -1,0 +1,12 @@
+{
+  "courseTitle": "Full Stack Developer",
+  "chapters": [
+    {
+      "id": "1",
+      "slug": "1",
+      "title": "Web & Programming Fundamentals",
+      "summary": "เมื่อเรียนจบแล้ว เราควรสามารถมอง Web Application หนึ่งระบบแล้วอธิบายได้ว่า ผู้ใช้เปิด Browser แล้วข้อมูลเดินทางผ่าน DNS, Internet, HTTP ไปถึง Server และ Database จน Browser แสดงผล",
+      "status": "ready"
+    }
+  ]
+}
