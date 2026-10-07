@@ -71,13 +71,13 @@ export function SidebarFrame({
         id={menuId}
         aria-label={navLabel}
         inert={!open}
-        className={`fixed top-14 bottom-0 left-0 z-40 w-72 max-w-[calc(100vw-3rem)] overflow-y-auto border-r border-rule bg-paper-raised transition-transform duration-300 ease-in-out ${
+        className={`fixed top-14 bottom-0 left-0 z-40 w-72 max-w-[calc(100vw-3rem)] scroll-auto overflow-y-auto border-r border-rule bg-paper-raised transition-transform duration-300 ease-in-out ${
           open
             ? "translate-x-0 shadow-[8px_0_32px_rgba(42,36,28,0.12)]"
             : "pointer-events-none -translate-x-full shadow-none"
         }`}
       >
-        {typeof children === "function" ? children(close) : children}
+        {typeof children === "function" ? children(close, open) : children}
       </nav>
     </>
   );

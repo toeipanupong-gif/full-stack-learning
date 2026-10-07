@@ -49,13 +49,20 @@ function isAsciiArt(line) {
   return /[|┌┐└┘├┤┬┴╭╮╯╰]/.test(line) || /-{3,}|={3,}|>{2,}/.test(line);
 }
 
+function isRoadmap(rows) {
+  return rows.some((line) => isArrowOnly(line) || /^[↓↑]/.test(String(line).trim()));
+}
+
 export function Diagram({ lines }) {
   const rows = lines || [];
   const ascii = rows.some(isAsciiArt);
+  const roadmap = isRoadmap(rows);
 
   return (
     <figure
-      className={`mx-auto flex w-full max-w-md flex-col items-center text-center text-diagram ${
+      className={`mx-auto flex w-full max-w-md flex-col items-center text-center ${
+        roadmap ? "rounded-xl bg-code-bg px-4 py-5 text-code-fg md:px-5" : "text-diagram"
+      } ${
         ascii ? "overflow-x-auto font-code text-[0.9rem] leading-relaxed" : "font-reading text-[1.05rem] leading-snug"
       }`}
     >
@@ -65,7 +72,11 @@ export function Diagram({ lines }) {
 
         if (isArrowOnly(text)) {
           return (
-            <div key={`${index}-${text}`} className="py-1 text-xl leading-none text-ink-soft" aria-hidden="true">
+            <div
+              key={`${index}-${text}`}
+              className={`py-1 text-xl leading-none ${roadmap ? "text-code-fg" : "text-ink-soft"}`}
+              aria-hidden="true"
+            >
               {text}
             </div>
           );
@@ -73,7 +84,10 @@ export function Diagram({ lines }) {
 
         if (isSideNote(text)) {
           return (
-            <div key={`${index}-${text}`} className="pb-2 text-[0.98rem] leading-relaxed text-ink-soft">
+            <div
+              key={`${index}-${text}`}
+              className={`pb-2 text-[0.98rem] leading-relaxed ${roadmap ? "text-code-fg/80" : "text-ink-soft"}`}
+            >
               {text}
             </div>
           );
