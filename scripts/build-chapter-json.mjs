@@ -1,13 +1,13 @@
 /**
- * แปลง learning-1.txt → content/chapters/1.json + index.json
- * node scripts/build-chapter-json.mjs
+ * แปลง content.txt → content/chapters/{n}.json และอัปเดต index.json
+ * node scripts/build-chapter-json.mjs 2
  */
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const sourcePath = path.join(root, "learning-1.txt");
+const sourcePath = path.join(root, "content.txt");
 const outDir = path.join(root, "content", "chapters");
 
 const FORWARD_CUES = new Set(["ส่วน", "หรือ", "และ", "แต่", "เพราะ", "ถ้า", "เมื่อ", "โดย"]);
@@ -94,7 +94,7 @@ const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "
 
 function isProse(t) {
   if (!t) return false;
-  if (/^1\.\d+\s/.test(t)) return false;
+  if (/^\d+\.\d+\s/.test(t)) return false;
   if (t.length >= 56 && /[ก-๙]/.test(t)) return true;
   if (/หมายถึง|ย่อมาจาก|แปลตรงตัว/.test(t)) return true;
   if (/(ครับ|ค่ะ)/.test(t)) return true;
@@ -150,16 +150,17 @@ function isCodeFragment(t) {
 }
 
 function isSubheading(t, next, prev) {
-  if (!t || t.length > 72) return false;
-  if (/^1\.\d+\s/.test(t)) return false;
+  if (!t || t.length > 80) return false;
+  if (/^\d+\.\d+\s/.test(t)) return false;
+  if (/^\d+\)\s+\S/.test(t)) return true;
   if (/^\d+\.\s/.test(t)) return false;
+  if (/คืออะไร/.test(t) && t.length <= 64) return true;
+  if (/^ทำไม/.test(t) && t.length <= 72) return true;
   if (/[“"][^”"]*คืออะไร/.test(t)) return false;
   if (isExampleCue(prev)) return false;
   if (prev && /ย่อมาจาก/.test(prev)) return false;
   if (isArrowLine(prev) || isArrowLine(next)) return false;
   if (/[{}<>[\]]/.test(t) && !/อย่างไร/.test(t)) return false;
-  if (/คืออะไร/.test(t)) return true;
-  if (/^ทำไม/.test(t) && t.length <= 60) return true;
   if (EXTRA_HEADINGS.has(t)) return true;
   if (/^[1-5]xx\s[—–-]/.test(t)) return true;
   if (/^Layer\s+\d+\s[—–-]/.test(t)) return true;
@@ -210,8 +211,10 @@ function isDefiniteCode(raw) {
   if (/^HTTP\/\d+(\.\d+)?\s+\d{3}\b/.test(t)) return true;
   if (/^HTTP\/\d+(\.\d+)?$/.test(t)) return true;
   if (/^<\/?[a-zA-Z!][^>\n]*>?/.test(t)) return true;
-  if (/^(function|const|let|var|class|import|export|return|async|await|if|else|for|while|switch|case|try|catch|throw|new)\b/.test(t))
+  if (/^(function|const|let|var|class|import|export|return|async|await|if|else|for|while|switch|case|try|catch|throw|new|interface|type|enum)\b/.test(t))
     return true;
+  if (/^["']use (client|server)["'];?$/.test(t)) return true;
+  if (/^<>$|^<\/>$/.test(t)) return true;
   if (/^[{}\[\]();,]$/.test(t)) return true;
   if (/^"[^"]*"\s*:/.test(t)) return true;
   if (/^\/\/|\/\*/.test(t)) return true;
@@ -292,6 +295,7 @@ function expandContext(tokens) {
 
 function slugify(title) {
   let s = title
+    .replace(/^\d+\)\s*/, "")
     .replace(/^\d+\.\s*/, "")
     .replace(/^แล้ว\s+/, "")
     .replace(/คืออะไร.*/u, "")
@@ -514,21 +518,35 @@ function tokensFromLines(lines) {
   return tokens;
 }
 
-function splitSections(lines) {
+function splitSections(lines, chapterNo) {
+  const sectionRe = new RegExp(`^${chapterNo}\\.(\\d+)\\s+(.+)\\s*$`);
+  const titleRe = new RegExp(`^${chapterNo}\\.\\s+(\\S.*)\\s*$`);
   const sections = [];
-  let intro = [];
+  const intro = [];
+  const skipIndexes = new Set();
+  const seen = new Set();
   let current = null;
-  for (const line of lines) {
-    const m = line.match(/^1\.(\d+)\s+(.+)\s*$/);
-    if (m && line.trim().startsWith("1.")) {
-      current = { id: `1.${m[1]}`, title: m[2].trim(), lines: [] };
+  let title = "";
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!title && titleRe.test(line)) {
+      title = line.match(titleRe)[1].trim();
+      skipIndexes.add(i);
+      continue;
+    }
+    const m = line.match(sectionRe);
+    if (m && !seen.has(m[1])) {
+      seen.add(m[1]);
+      skipIndexes.add(i);
+      current = { id: `${chapterNo}.${m[1]}`, title: m[2].trim(), lines: [] };
       sections.push(current);
       continue;
     }
     if (!current) intro.push(line);
     else current.lines.push(line);
   }
-  return { intro, sections };
+  return { intro, sections, title, skipIndexes };
 }
 
 function summaryFromIntro(introLines) {
@@ -541,8 +559,8 @@ function summaryFromIntro(introLines) {
   return text.slice(0, 2).join(" ");
 }
 
-function buildChapter(lines) {
-  const { intro, sections } = splitSections(lines);
+function buildChapter(lines, chapterNo) {
+  const { intro, sections, title, skipIndexes } = splitSections(lines, chapterNo);
   const usedAnchors = new Set();
   const introTokens = tokensFromLines(intro);
   const builtSections = sections.map((section) => ({
@@ -551,16 +569,18 @@ function buildChapter(lines) {
     blocks: blocksFromTokens(tokensFromLines(section.lines), section.id, usedAnchors),
   }));
 
-  const titleLine = intro.map((l) => l.trim()).find((l) => /^1:\s*/.test(l)) || "";
-  const title = titleLine.replace(/^1:\s*/, "").split(/\s+ก่อน/)[0].trim() || "Web & Programming Fundamentals";
+  const introText = intro.map((l) => l.trim()).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
 
   return {
-    id: "1",
-    slug: "1",
-    title,
-    summary: summaryFromIntro(intro),
-    intro: blocksFromTokens(introTokens, "1-0", usedAnchors),
-    sections: builtSections,
+    chapter: {
+      id: chapterNo,
+      slug: chapterNo,
+      title: title || "Frontend Development",
+      summary: introText || summaryFromIntro(intro),
+      intro: blocksFromTokens(introTokens, `${chapterNo}-0`, usedAnchors),
+      sections: builtSections,
+    },
+    skipIndexes,
   };
 }
 
@@ -579,11 +599,13 @@ function blockText(block) {
   return block.text;
 }
 
-function assertCoverage(lines, chapter) {
-  const skip = new Set(
-    lines.map((l) => l.trim()).filter((l) => /^1\.\d+\s/.test(l))
+function assertCoverage(lines, chapter, skipIndexes) {
+  const expected = squash(
+    lines
+      .map((line, index) => (skipIndexes.has(index) ? "" : line.trim()))
+      .filter(Boolean)
+      .join("\n")
   );
-  const expected = squash(lines.map((l) => l.trim()).filter((l) => l && !skip.has(l)).join("\n"));
   const parts = [];
   for (const b of chapter.intro) parts.push(blockText(b));
   for (const s of chapter.sections) {
@@ -604,36 +626,41 @@ function assertCoverage(lines, chapter) {
 }
 
 function main() {
-  const raw = fs.readFileSync(sourcePath, "utf8").replace(/^\uFEFF/, "");
+  const chapterNo = process.argv[2] || "2";
+  const raw = fs.readFileSync(sourcePath, "utf8").replace(/^\uFEFF/, "").replace(/\r/g, "");
   const lines = raw.split(/\n/);
-  const chapter = buildChapter(lines);
-  const index = {
-    courseTitle: "Full Stack Developer",
-    chapters: [
-      {
-        id: chapter.id,
-        slug: chapter.slug,
-        title: chapter.title,
-        summary: chapter.summary,
-        status: "ready",
-      },
-    ],
+  const { chapter, skipIndexes } = buildChapter(lines, chapterNo);
+  const indexPath = path.join(outDir, "index.json");
+  const index = fs.existsSync(indexPath)
+    ? JSON.parse(fs.readFileSync(indexPath, "utf8"))
+    : { courseTitle: "Full Stack Developer", chapters: [] };
+  const entry = {
+    id: chapter.id,
+    slug: chapter.slug,
+    title: chapter.title,
+    summary: chapter.summary,
+    status: "ready",
   };
+  const existing = index.chapters.findIndex((item) => item.id === chapter.id);
+  if (existing >= 0) index.chapters[existing] = entry;
+  else index.chapters.push(entry);
 
   fs.mkdirSync(outDir, { recursive: true });
-  fs.writeFileSync(path.join(outDir, "1.json"), `${JSON.stringify(chapter, null, 2)}\n`);
-  fs.writeFileSync(path.join(outDir, "index.json"), `${JSON.stringify(index, null, 2)}\n`);
+  fs.writeFileSync(path.join(outDir, `${chapterNo}.json`), `${JSON.stringify(chapter, null, 2)}\n`);
+  fs.writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`);
 
   const acc = {};
   countBlocks(chapter.intro, acc);
   for (const s of chapter.sections) countBlocks(s.blocks, acc);
-  const coverage = assertCoverage(lines, chapter);
-  const headings = [];
-  for (const s of chapter.sections) {
-    const hs = s.blocks.filter((b) => b.type === "subheading");
-    headings.push({ id: s.id, title: s.title, count: hs.length, sample: hs.slice(0, 8).map((h) => h.title) });
-  }
-  console.log(JSON.stringify({ blocks: acc, coverage, sections: headings }, null, 2));
+  const coverage = assertCoverage(lines, chapter, skipIndexes);
+  const headings = chapter.sections.map((section) => ({
+    id: section.id,
+    title: section.title,
+    blocks: section.blocks.length,
+    subheadings: section.blocks.filter((block) => block.type === "subheading").length,
+  }));
+  console.log(JSON.stringify({ title: chapter.title, blocks: acc, coverage, sections: headings }, null, 2));
+  if (!coverage.ok) process.exitCode = 1;
 }
 
 main();
