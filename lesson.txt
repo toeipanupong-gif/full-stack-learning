@@ -1,0 +1,309 @@
+1. Web & Programming Fundamentals
+20 หัวข้อย่อย
+1.1 Internet, Web, Client–Server
+1.2 URL, URI, Domain, DNS, IP Address, Port
+1.3 TCP, UDP, Connection, TLS Handshake
+1.4 HTTP Fundamentals & HTTP Methods / Status Codes
+1.5 Cookie, Session, Token และ JWT
+1.6 CORS, Same-Origin Policy และ Preflight
+1.7 HTML Fundamentals และ DOM
+1.8 CSS Fundamentals — Box Model, Flexbox, Grid, Responsive
+1.9 JavaScript Fundamentals — Variable, Type, Scope, Function, Object, Array
+1.10 JavaScript Advanced Basics — Closure, Hoisting, this, Prototype, Module
+1.11 Asynchronous JavaScript — Promise, async/await, Event Loop
+1.12 TypeScript Fundamentals
+1.13 OOP, SOLID, Clean Code และ Design Principles
+1.14 Git Fundamentals
+1.15 Linux & Command Line Fundamentals
+1.16 Data Structure & Algorithm Fundamentals
+1.17 Software Testing Fundamentals
+1.18 API Fundamentals & API Design
+1.19 Application Architecture Fundamentals
+1.20 Logging, Monitoring, Debugging & Observability Fundamentals  
+
+2. Frontend Development
+ประมาณ 14 หัวข้อย่อย
+เราจะลงจาก Browser → React → Next.js → Frontend Architecture → Performance
+2.1 Browser Rendering & Modern Frontend Architecture
+2.2 SPA, MPA, CSR, SSR, SSG, ISR
+2.3 React Fundamentals — Component, JSX, Props
+2.4 React State และ Event Handling
+2.5 React Lifecycle และ useEffect
+2.6 React Hooks — useState, useRef, useMemo, useCallback
+2.7 React Context และ State Management
+2.8 Form Handling และ Validation
+2.9 Data Fetching และ Server State
+2.10 React Performance & Re-render
+2.11 Next.js Fundamentals และ App Router
+2.12 Next.js Server Component / Client Component
+2.13 Next.js Routing, Middleware, Data Fetching, Cache
+2.14 Frontend Architecture, Accessibility, SEO และ Performance  
+ตัวอย่างเรื่องที่จะลงลึกในหัวข้อนี้:
+React rendering
+Virtual DOM
+Hydration
+React Server Components
+Suspense
+TanStack Query
+Zustand / Redux
+Forms
+Image optimization
+Core Web Vitals
+SEO
+Accessibility
+
+3. Backend Development + PHP / Laravel
+ประมาณ 14 หัวข้อย่อย
+3.1 Backend Architecture และ Request Lifecycle
+3.2 REST API Implementation
+3.3 PHP Fundamentals
+3.4 PHP OOP และ Modern PHP
+3.5 Composer และ PHP Package Management
+3.6 Laravel Architecture & Lifecycle
+3.7 Laravel Routing, Controller, Middleware
+3.8 Laravel Request Validation และ Form Request
+3.9 Eloquent ORM และ Relationships
+3.10 Service Layer, Repository และ Dependency Injection
+3.11 Authentication & Authorization ใน Laravel
+3.12 Queue, Job, Event, Listener, Scheduler
+3.13 Laravel Cache, Redis และ Performance
+3.14 Laravel Testing, Error Handling และ Production Practices  
+จะรวมเรื่อง:
+PHP-FPM
+Composer
+Artisan
+Migration
+Seeder
+Model
+Policy
+Gate
+Sanctum
+Queue
+Scheduler
+Service Container
+ด้วย
+
+4. Database & Data Storage
+ประมาณ 15 หัวข้อย่อย
+หัวข้อนี้จะตอบเรื่องที่คุณเคยถามว่า
+Database มีกี่แบบ และแต่ละแบบเหมาะกับอะไร
+4.1 Database Fundamentals
+4.2 Relational Database คืออะไร
+4.3 SQL Fundamentals
+4.4 Table, Row, Column, Schema, Constraint
+4.5 Primary Key, Foreign Key และ Relationship
+4.6 JOIN แบบต่าง ๆ
+4.7 Index และ Query Performance
+4.8 Transaction และ ACID
+4.9 Isolation Level และ Lock
+4.10 MySQL vs PostgreSQL
+4.11 NoSQL Fundamentals
+4.12 MongoDB / Document Database
+4.13 Redis / In-memory Database & Cache
+4.14 Search Database — Elasticsearch / OpenSearch
+4.15 Database Design, Scaling, Replication, Backup  
+รวม Database Type เช่น:
+Relational
+Document
+Key-Value
+Search Engine
+Graph
+Time-Series
+Wide-column
+In-memory
+
+5. Concurrency, Race Condition & Distributed Coordination
+ประมาณ 13 หัวข้อย่อย
+หัวข้อนี้จะลงลึกมากกว่าที่เราเกริ่นใน JavaScript Async
+5.1 Process, Thread และ Execution Model
+5.2 Synchronous vs Asynchronous
+5.3 Concurrency vs Parallelism
+5.4 Race Condition
+5.5 Critical Section
+5.6 Mutex, Lock, Semaphore
+5.7 Deadlock, Livelock, Starvation
+5.8 Atomicity
+5.9 Database Transaction & Isolation
+5.10 Optimistic vs Pessimistic Locking
+5.11 Idempotency และ Duplicate Request
+5.12 Distributed Lock
+5.13 Queue, Worker และ Concurrency Control  
+จะใช้ตัวอย่างจริงเช่น:
+Stock เหลือ 1
+แต่ User 2 คนกดซื้อพร้อมกัน
+Coupon ใช้ได้ครั้งเดียว
+แต่ยิง Request ซ้ำ
+Payment callback เข้ามาซ้ำ
+Cronjob สอง Process ทำงานพร้อมกัน
+
+6. Server / Linux / Deployment / DevOps
+ประมาณ 15 หัวข้อย่อย
+6.1 Server Architecture Fundamentals
+6.2 Linux Server Administration
+6.3 User, Permission และ Security
+6.4 Process และ Service Management
+6.5 Networking บน Server
+6.6 Nginx Fundamentals
+6.7 Reverse Proxy และ Load Balancing
+6.8 Node.js Deployment + PM2 / systemd
+6.9 PHP + PHP-FPM Deployment
+6.10 Supervisor และ Queue Worker
+6.11 Docker Fundamentals
+6.12 Docker Compose
+6.13 CI/CD Fundamentals
+6.14 Logging, Monitoring และ Alerting
+6.15 Production Deployment Best Practices  
+จะลงรายละเอียดเช่น:
+Nginx
+PM2
+systemd
+PHP-FPM
+Supervisor
+Cron
+Firewall
+SSL
+Docker
+CI/CD
+GitHub Actions
+
+7. Security & System Design
+ประมาณ 14 หัวข้อย่อย
+7.1 Security Fundamentals และ Threat Model
+7.2 Authentication
+7.3 Authorization
+7.4 Password Security และ Hashing
+7.5 Session / Token / JWT Security
+7.6 OAuth 2.0 และ OpenID Connect
+7.7 XSS
+7.8 CSRF
+7.9 SQL Injection
+7.10 CORS และ Browser Security
+7.11 Rate Limiting, Brute Force และ Abuse Protection
+7.12 Secrets Management และ Encryption
+7.13 OWASP Top 10
+7.14 System Design Fundamentals  
+System Design จะเชื่อมกับเรื่อง:
+Load Balancer
+Cache
+Database
+Queue
+CDN
+Horizontal Scaling
+High Availability
+Distributed System
+
+8. AI for Software Development
+ประมาณ 10 หัวข้อย่อย
+8.1 AI และ LLM Fundamentals สำหรับ Developer
+8.2 AI ช่วย Coding ได้อย่างไร
+8.3 Prompting สำหรับ Software Development
+8.4 Context Engineering
+8.5 AI-assisted Debugging
+8.6 AI Code Review
+8.7 AI-assisted Testing
+8.8 Documentation / Requirement / Architecture ด้วย AI
+8.9 Security, Privacy และ Hallucination
+8.10 Workflow การใช้ AI แบบ Professional  
+หลักสำคัญที่เราจะยึดคือ:
+Think
+↓
+Ask AI
+↓
+Understand
+↓
+Verify
+↓
+Modify
+↓
+Test
+↓
+Review
+↓
+Deploy
+ไม่ใช่ Copy Code จาก AI แล้ว Deploy ทันที
+
+9. Cloud Services & Cloud Architecture
+ประมาณ 15 หัวข้อย่อย
+9.1 Cloud Fundamentals
+9.2 IaaS, PaaS, SaaS, FaaS
+9.3 AWS / GCP / Azure Overview
+9.4 Virtual Machine / Compute
+9.5 Container Service
+9.6 Serverless
+9.7 Object Storage
+9.8 Managed Database
+9.9 Redis / Managed Cache
+9.10 CDN และ DNS
+9.11 Load Balancer และ Auto Scaling
+9.12 VPC, Subnet, NAT, Firewall
+9.13 IAM และ Secret Management
+9.14 Queue, Messaging, Monitoring
+9.15 Backup, Disaster Recovery, HA, IaC และ Cost Management  
+จะ Mapping ให้เห็นแบบนี้ด้วย:
+AWS EC2
+≈ GCP Compute Engine
+≈ Azure VM
+AWS S3
+≈ Google Cloud Storage
+≈ Azure Blob Storage
+AWS RDS
+≈ Cloud SQL
+≈ Azure Database
+
+10. Production Server Setup & Deployment Architecture
+ประมาณ 12 หัวข้อย่อย
+นี่คือหัวข้อที่เอาทุกอย่างมารวมกัน
+10.1 เลือก Architecture สำหรับ Production
+10.2 เลือก VPS / Cloud Provider
+10.3 Domain, DNS และ CDN
+10.4 เตรียม Ubuntu Server
+10.5 SSH และ Server Hardening
+10.6 Install Runtime — Node / PHP / Database / Redis
+10.7 Nginx และ Reverse Proxy
+10.8 SSL / HTTPS
+10.9 Database, Cache, Queue, Worker, Cron
+10.10 Environment Variable, Secret และ Firewall
+10.11 Logging, Monitoring, Backup และ Recovery
+10.12 CI/CD และ End-to-End Production Deployment  
+ปลายหัวข้อนี้เราจะประกอบระบบจริงประมาณ:
+Internet
+   ↓
+DNS
+   ↓
+Cloudflare
+   ↓
+Nginx
+   ├── Next.js
+   │
+   └── Laravel API
+         ├── PostgreSQL / MySQL
+         ├── Redis
+         ├── Queue Worker
+         └── Object Storage
+
+และไล่ตั้งแต่:
+Server เปล่า
+↓
+SSH
+↓
+Firewall
+↓
+Runtime
+↓
+Database
+↓
+Application
+↓
+Nginx
+↓
+Domain
+↓
+SSL
+↓
+Monitoring
+↓
+Backup
+↓
+CI/CD
+↓
+Production
