@@ -1,7 +1,9 @@
 import { ChapterNav } from "@/components/chapter/chapter-nav";
 import { ContentBlocks } from "@/components/reading/content-blocks";
 import { ReadingColumn } from "@/components/reading/reading-column";
+import { JsonLd } from "@/components/seo/json-ld";
 import { chapterIsOpen, getChapter, getChapterToc, getCourse, sectionAnchor } from "@/lib/course";
+import { buildPageMetadata, chapterJsonLd } from "@/lib/seo";
 import { notFound } from "next/navigation";
 
 export const dynamicParams = false;
@@ -15,12 +17,19 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }) {
   const { slug } = await params;
   const chapter = getChapter(slug);
-  if (!chapter) return { title: "ไม่พบบทเรียน" };
+  if (!chapter) {
+    return {
+      title: "ไม่พบบทเรียน",
+      robots: { index: false, follow: false },
+    };
+  }
 
-  return {
-    title: `${chapter.title} · ${getCourse().courseTitle}`,
-    description: chapter.summary || "",
-  };
+  return buildPageMetadata({
+    title: chapter.title,
+    description: chapter.summary,
+    path: `/chapters/${chapter.slug}`,
+    type: "article",
+  });
 }
 
 export default async function ChapterPage({ params }) {
@@ -32,6 +41,7 @@ export default async function ChapterPage({ params }) {
 
   return (
     <>
+      <JsonLd data={chapterJsonLd(chapter)} />
       <ChapterNav chapterTitle={chapter.title} toc={toc} />
       <main>
         <ReadingColumn>

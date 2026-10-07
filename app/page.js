@@ -1,6 +1,15 @@
 import { ChapterCard } from "@/components/home/chapter-card";
 import { SiteHeader } from "@/components/home/site-header";
+import { JsonLd } from "@/components/seo/json-ld";
 import { chapterIsOpen, getCourse } from "@/lib/course";
+import { buildPageMetadata, courseName, homeJsonLd, SITE_DESCRIPTION } from "@/lib/seo";
+
+export const metadata = buildPageMetadata({
+  title: courseName(),
+  description: SITE_DESCRIPTION,
+  path: "/",
+  absoluteTitle: true,
+});
 
 export default function HomePage() {
   const course = getCourse();
@@ -11,6 +20,7 @@ export default function HomePage() {
 
   return (
     <>
+      <JsonLd data={homeJsonLd()} />
       <SiteHeader
         courseTitle={course.courseTitle}
         chapters={chapters.map(({ id, slug, title, openable }) => ({ id, slug, title, openable }))}
