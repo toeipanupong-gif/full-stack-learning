@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { SidebarFrame } from "@/components/shell/sidebar-frame";
+import { SidebarSearch } from "@/components/shell/sidebar-search";
 
 const PAGE_CONTAINER = "mx-auto w-full max-w-[70ch] px-5 md:px-8 xl:max-w-5xl xl:px-10";
 
@@ -17,16 +18,18 @@ export function SiteHeader({ courseTitle, chapters }) {
       closeLabel="ปิดเมนู"
     >
       {(close) => (
-        <div className="px-3 py-4">
-          <p className="px-3 pb-3 font-ui text-lg font-bold text-ink">บทเรียน</p>
-          <ul className="space-y-1">
-            {chapters.map((chapter) => (
-              <li key={chapter.id}>
-                <ChapterLink chapter={chapter} onNavigate={close} />
-              </li>
-            ))}
-          </ul>
-        </div>
+        <SidebarSearch onNavigate={close}>
+          <div className="px-3 py-4">
+            <p className="px-3 pb-3 font-ui text-lg font-bold text-ink">บทเรียน</p>
+            <ul className="space-y-1">
+              {chapters.map((chapter) => (
+                <li key={chapter.id}>
+                  <ChapterLink chapter={chapter} onNavigate={close} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        </SidebarSearch>
       )}
     </SidebarFrame>
   );

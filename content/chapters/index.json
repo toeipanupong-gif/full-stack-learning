@@ -14,6 +14,13 @@
       "title": "Frontend Development",
       "summary": "เมื่อเรียนจบแล้ว เราควรสามารถสร้าง Frontend ด้วย React/Next.js ได้แบบ “เข้าใจว่าระบบทำงานอย่างไร” ไม่ใช่แค่เขียน Component ให้แสดงผลได้ และควรเริ่มสามารถมอง Code Frontend แล้ววิเคราะห์ได้ว่า ข้อมูลมาจากไหน, State ควรอยู่ตรงไหน, Code ควรรัน Server หรือ Client, ทำไม Component Render ใหม่ และจุดไหนน่าจะเป็นปัญหา Performance.",
       "status": "ready"
+    },
+    {
+      "id": "3",
+      "slug": "3",
+      "title": "Backend Development + PHP / Laravel",
+      "summary": "เมื่อเรียนจบแล้ว เราจะเข้าใจภาพรวมตั้งแต่ “Request เข้ามา” จนถึง “Backend ทำงานเสร็จและตอบกลับ” รวมถึงเขียน Laravel เป็นระบบได้",
+      "status": "ready"
     }
   ]
 }

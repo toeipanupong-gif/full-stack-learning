@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { SidebarFrame } from "@/components/shell/sidebar-frame";
+import { SidebarSearch } from "@/components/shell/sidebar-search";
 
 const PAGE_CONTAINER = "mx-auto w-full max-w-[70ch] px-5 md:px-8 xl:max-w-5xl xl:px-10";
 const READING_LINE = 96;
@@ -27,7 +28,11 @@ export function ChapterNav({ chapterTitle, toc }) {
         </Link>
       }
     >
-      {(close, open) => <ChapterMenu toc={toc} open={open} onNavigate={close} />}
+      {(close, open) => (
+        <SidebarSearch onNavigate={close}>
+          <ChapterMenu toc={toc} open={open} onNavigate={close} />
+        </SidebarSearch>
+      )}
     </SidebarFrame>
   );
 }
