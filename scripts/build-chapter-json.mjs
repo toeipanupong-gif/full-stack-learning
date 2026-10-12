@@ -224,7 +224,14 @@ function isDefiniteCode(raw) {
     return true;
   if (/^\$\s?\w+/.test(t)) return true;
   if (/^npm\s|^node\s|^curl\s|^ping\s|^ssh\s/.test(t)) return true;
+  if (!/[ก-๙]/.test(t) && isSqlClause(t)) return true;
   return false;
+}
+
+function isSqlClause(t) {
+  return /^(SELECT|INSERT INTO|INSERT|UPDATE|DELETE FROM|DELETE|FROM|WHERE|((INNER|LEFT|RIGHT|FULL|CROSS)\s+)?JOIN|ON|GROUP BY|ORDER BY|HAVING|LIMIT|OFFSET|CREATE|ALTER|DROP|WITH|UNION|VALUES|SET|INTO|EXPLAIN|BEGIN|COMMIT|ROLLBACK|AND|OR|PRIMARY KEY|FOREIGN KEY|UNIQUE|CONSTRAINT|REFERENCES|INDEX|SHOW|USE)\b/i.test(
+    t
+  );
 }
 
 function looksLikeUrlToken(t) {
@@ -324,6 +331,7 @@ function detectLang(text) {
   if (/\b(function|const|let|var|=>|console\.|class\s)/.test(text)) return "javascript";
   if (/^\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|HTTP\/)/m.test(text)) return "http";
   if (/<\?php|->/.test(text)) return "php";
+  if (/^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH|EXPLAIN|FROM|WHERE)\b/im.test(text)) return "sql";
   if (/^\s*(npm|node|curl|ping|ssh|\$)\b/m.test(text)) return "shell";
   if (/[{[]/.test(text) && /["']/.test(text)) return "json";
   if (/[{}]/.test(text) && /(px|rem|em|flex|grid|color|margin|padding|font-)/.test(text)) return "css";
@@ -524,7 +532,7 @@ function splitSections(lines, chapterNo) {
   const sections = [];
   const intro = [];
   const skipIndexes = new Set();
-  const seen = new Set();
+  let nextSection = 1;
   let current = null;
   let title = "";
 
@@ -536,8 +544,8 @@ function splitSections(lines, chapterNo) {
       continue;
     }
     const m = line.match(sectionRe);
-    if (m && !seen.has(m[1])) {
-      seen.add(m[1]);
+    if (m && Number(m[1]) === nextSection) {
+      nextSection += 1;
       skipIndexes.add(i);
       current = { id: `${chapterNo}.${m[1]}`, title: m[2].trim(), lines: [] };
       sections.push(current);

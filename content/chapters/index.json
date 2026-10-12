@@ -21,6 +21,13 @@
       "title": "Backend Development + PHP / Laravel",
       "summary": "เมื่อเรียนจบแล้ว เราจะเข้าใจภาพรวมตั้งแต่ “Request เข้ามา” จนถึง “Backend ทำงานเสร็จและตอบกลับ” รวมถึงเขียน Laravel เป็นระบบได้",
       "status": "ready"
+    },
+    {
+      "id": "4",
+      "slug": "4",
+      "title": "Database & Data Storage",
+      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจการออกแบบฐานข้อมูล, SQL, Relationship, JOIN, Index และการเลือกใช้ MySQL/PostgreSQL เข้าใจ Transaction, ACID, Isolation, Lock, Deadlock และปัญหาข้อมูลชนกัน รู้จัก NoSQL, Redis, MongoDB, Elasticsearch รวมถึง Scaling, Replication, Backup และ Recovery",
+      "status": "ready"
     }
   ]
 }
