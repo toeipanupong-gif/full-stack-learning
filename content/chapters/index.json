@@ -28,6 +28,13 @@
       "title": "Database & Data Storage",
       "summary": "เมื่อเรียนจบแล้ว จะเข้าใจการออกแบบฐานข้อมูล, SQL, Relationship, JOIN, Index และการเลือกใช้ MySQL/PostgreSQL เข้าใจ Transaction, ACID, Isolation, Lock, Deadlock และปัญหาข้อมูลชนกัน รู้จัก NoSQL, Redis, MongoDB, Elasticsearch รวมถึง Scaling, Replication, Backup และ Recovery",
       "status": "ready"
+    },
+    {
+      "id": "5",
+      "slug": "5",
+      "title": "Concurrency, Race Condition & Distributed Coordination",
+      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจว่าระบบที่มีหลาย Request, Worker หรือ Server ทำงานพร้อมกันเกิดปัญหาอะไรได้บ้าง เช่น Race Condition, Deadlock และ Lost Update รวมถึงวิธีแก้ด้วย Lock, Mutex, Semaphore, Atomic Operation, Optimistic/Pessimistic Lock, Idempotency และ Distributed Lock เพื่อออกแบบระบบที่ถูกต้องและปลอดภัยภายใต้การทำงานพร้อมกัน",
+      "status": "ready"
     }
   ]
 }
