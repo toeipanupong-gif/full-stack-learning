@@ -1,0 +1,4817 @@
+6. Server / Linux / Deployment / DevOps
+เมื่อเรียนจบแล้ว จะเข้าใจว่าเว็บจากเครื่อง Developer ถูกนำขึ้น Production อย่างไร ตั้งแต่โครงสร้าง Server, Linux, Process, Port, Network, Nginx, Reverse Proxy, Load Balancer, Node.js/PM2/systemd, PHP/PHP-FPM, Worker/Supervisor, Docker, Environment Variables, SSL/HTTPS, Domain/DNS, Logging, Monitoring, CI/CD, Deployment, Restart/Rollback ไปจนถึงการดูแลระบบให้รันต่อเนื่องและแก้ปัญหาเมื่อ Production มีปัญหาได้อย่างเป็นระบบ
+
+6.1 Server Architecture & Production Request Flow แบบลงลึก
+บทนี้คือจุดเริ่มต้นของฝั่ง Server / Linux / Deployment / DevOps เราจะมองภาพใหญ่ก่อนว่าเวลา User เปิดเว็บไซต์หนึ่งหน้า Request เดินทางผ่านอะไรบ้างใน Production จริง และแต่ละ Layer มีหน้าที่อะไร
+Mental Model ใหญ่:
+Browser
+↓
+DNS
+↓
+CDN / WAF
+↓
+Load Balancer
+↓
+Nginx / Reverse Proxy
+↓
+Application
+├→ Next.js / Node.js
+└→ PHP-FPM / Laravel
+↓
+Database / Redis / Queue / Object Storage
+
+1) Development กับ Production ต่างกันยังไง
+ตอนพัฒนาเราอาจรัน:
+npm run dev
+
+หรือ:
+php artisan serve
+
+แล้วเปิด:
+localhost:3000
+localhost:8000
+
+แต่ Production จริงไม่ได้จบแค่นั้น
+เพราะต้องคิดเรื่อง:
+domain
+HTTPS
+security
+process restart
+multiple users
+logging
+scaling
+load balancing
+backups
+monitoring
+deployment
+
+2) Production Server คืออะไร
+Server คือเครื่องหรือ Environment ที่รัน Service ของเรา
+อาจเป็น:
+Physical Server
+Virtual Machine
+Cloud VM
+Container
+Managed Platform
+
+ตัวอย่าง OS ที่พบบ่อย:
+Ubuntu Linux
+Debian
+Rocky Linux
+Amazon Linux
+
+สำหรับ Web Server ปัจจุบัน Linux เป็นพื้นฐานสำคัญมาก
+3) Request เริ่มจาก Browser
+User เปิด:
+https://example.com/products/100
+
+Browser ต้องหาก่อนว่า:
+example.com อยู่ที่ IP ไหน?
+
+จึงเข้าสู่ DNS
+4) DNS คืออะไร
+DNS = Domain Name System
+แปลง:
+example.com
+
+เป็น:
+203.0.113.10
+
+Concept:
+Domain
+↓
+DNS lookup
+↓
+IP address
+
+5) Domain ไม่ได้ชี้เข้า Application โดยตรงเสมอไป
+บางระบบ:
+example.com
+↓
+Cloudflare
+↓
+Load Balancer
+↓
+Server
+
+ดังนั้น IP ที่ Browser เห็นอาจเป็น IP ของ CDN/Proxy ไม่ใช่ App Server จริง
+6) CDN คืออะไร
+CDN = Content Delivery Network
+ใช้ช่วยส่ง Static Content จาก Server ที่ใกล้ User
+เช่น:
+images
+CSS
+JS
+fonts
+videos
+
+แทนให้ทุก Request วิ่งมาที่ Origin Server ที่เดียว
+7) ตัวอย่าง
+Origin อยู่ Singapore
+User อยู่ Thailand
+ถ้า CDN มี Edge กรุงเทพฯ:
+User
+↓
+Bangkok Edge
+
+Static File อาจได้จาก Edge ทันที
+ไม่ต้องไป Origin
+8) CDN ช่วยอะไร
+หลัก ๆ:
+ลด latency
+ลด bandwidth origin
+ลด server load
+cache static assets
+ช่วย absorb traffic spike
+
+9) CDN ไม่ได้มีไว้แค่ Static File
+บาง Platform ยังทำ:
+WAF
+DDoS protection
+SSL termination
+HTTP caching
+Bot protection
+
+ด้วย
+10) WAF คืออะไร
+WAF = Web Application Firewall
+อยู่หน้า Application
+ใช้ตรวจ Traffic เช่น:
+malicious request
+SQL injection pattern
+bad bots
+rate abuse
+
+แต่ WAF ไม่แทน Secure Coding ใน Application
+11) DDoS Protection
+DDoS = Distributed Denial of Service
+Attacker ส่ง Traffic จำนวนมากเพื่อทำให้ระบบรับไม่ไหว
+CDN/Edge Provider ช่วยดูดซับ Traffic บางส่วนก่อนถึง Origin
+12) หลัง CDN อาจมี Load Balancer
+Load Balancer คือ Layer ที่กระจาย Request ไปหลาย Server
+เช่น:
+             ┌→ App 1
+Client → LB ─┼→ App 2
+             └→ App 3
+
+13) ทำไมต้องมีหลาย App Servers
+เพื่อ:
+รองรับ traffic มากขึ้น
+high availability
+deploy ง่ายขึ้น
+ลด single point of failure
+
+ถ้า App 1 ตาย:
+LB → App 2 / App 3
+
+14) Load Balancing Algorithm
+วิธีแบ่ง Request เช่น:
+Round Robin
+Least Connections
+Weighted Round Robin
+IP Hash
+
+15) Round Robin
+Request:
+1 → Server A
+2 → Server B
+3 → Server C
+4 → Server A
+
+วนไป
+16) Least Connections
+ส่ง Request ไป Server ที่:
+มี active connections น้อยที่สุด
+
+เหมาะเมื่อ Request Duration แตกต่างกัน
+17) Health Check
+Load Balancer ต้องรู้ว่า Server ไหนยัง Healthy
+เช่นเรียก:
+GET /health
+
+ถ้า Server ตอบผิด/ไม่ตอบ:
+remove from rotation
+
+18) Health Check ที่ดีไม่ควรหนัก
+ไม่ควรทุก 5 วินาทีไป Query Report ใหญ่ ๆ
+ควรเบา เช่น:
+{
+  "status": "ok"
+}
+
+19) Liveness และ Readiness
+สองคำนี้สำคัญ
+Liveness
+ถามว่า:
+process ยังมีชีวิตไหม?
+
+Readiness
+ถามว่า:
+พร้อมรับ traffic จริงไหม?
+
+20) ตัวอย่าง
+App Process ยังรันอยู่
+แต่ DB Connection ใช้ไม่ได้
+ดังนั้น:
+liveness = true
+readiness = false
+
+ควรถูกเอาออกจาก Load Balancer ชั่วคราว
+21) Reverse Proxy คืออะไร
+Reverse Proxy คือ Server ที่อยู่หน้า Application
+เช่น:
+Nginx
+HAProxy
+Caddy
+Traefik
+
+Client คุยกับ Reverse Proxy
+Reverse Proxy ค่อยส่งต่อเข้า App
+22) ทำไมเรียก Reverse Proxy
+เพราะมัน Proxy แทนฝั่ง Server
+Client ไม่รู้ว่าข้างหลังมี:
+Node
+PHP
+หลาย service
+
+เห็นแค่ Proxy ตัวเดียว
+23) Nginx มักทำหน้าที่อะไร
+เช่น:
+receive HTTP/HTTPS
+terminate SSL
+serve static files
+reverse proxy
+load balance
+compression
+request limits
+access logs
+
+24) Example Architecture
+Internet
+↓
+Nginx :443
+├→ /api → Laravel :9000/FPM
+└→ / → Next.js :3000
+
+User ไม่ต้องรู้ Port ภายใน
+25) Public Port vs Internal Port
+ภายนอกมักเปิด:
+80  HTTP
+443 HTTPS
+22  SSH
+
+Application อาจรัน:
+3000
+8000
+9000
+
+แต่ไม่จำเป็นต้อง Public
+26) Principle สำคัญ
+เปิด Port สู่ Internet เท่าที่จำเป็น
+
+เช่นอย่าเปิด:
+3306 MySQL
+6379 Redis
+
+Public โดยไม่จำเป็น
+27) Port คืออะไร
+Port ใช้แยก Service บน IP เดียวกัน
+เช่น:
+22   SSH
+80   HTTP
+443  HTTPS
+3306 MySQL
+5432 PostgreSQL
+6379 Redis
+
+28) IP เดียวรันหลาย Service ได้
+เช่น:
+203.0.113.10:22
+203.0.113.10:80
+203.0.113.10:443
+
+เป็นเครื่องเดียว แต่ Service คนละตัว
+29) Nginx ฟัง Port 443
+แล้วส่งไป:
+127.0.0.1:3000
+
+ตัวอย่าง:
+Browser
+→ https://example.com:443
+→ Nginx
+→ localhost:3000
+
+30) ทำไมไม่ expose Node :3000 โดยตรง
+เพราะ Nginx ช่วยเรื่อง:
+SSL
+request buffering
+security headers
+static files
+logging
+routing
+multiple apps
+
+และทำให้ Architecture แยก Layer ชัด
+31) Next.js Production Flow
+เช่น:
+Nginx
+↓
+Node.js process
+↓
+Next.js
+
+Node อาจรันด้วย:
+systemd
+PM2
+Docker
+
+เพื่อให้ Process อยู่ต่อหลัง SSH ออก
+32) npm run dev ไม่ควรใช้ Production
+เพราะ Dev Server มีไว้สำหรับ Development เช่น:
+hot reload
+debug
+development optimizations
+
+Production ควร:
+npm run build
+npm run start
+
+ตาม Framework
+33) Build Phase
+Next.js:
+source code
+↓
+npm run build
+↓
+production build
+
+แล้ว Runtime ใช้ Build ที่เตรียมไว้
+34) Build-time vs Runtime
+สำคัญมาก
+Build-time
+เกิดตอนสร้าง Artifact
+เช่น:
+compile
+bundle
+static generation
+
+Runtime
+เกิดตอน User Request จริง
+เช่น:
+API call
+DB query
+SSR
+
+35) Environment Variable
+บาง Variable ใช้ตอน Build
+บางตัวใช้ Runtime
+เช่น:
+DATABASE_URL
+API_SECRET
+PUBLIC_API_URL
+
+ต้องเข้าใจ Framework ว่าอ่านตอนไหน
+36) Secret ห้ามฝังฝั่ง Browser
+เช่น:
+DB password
+private API key
+JWT signing secret
+
+ต้องอยู่ Server-side
+37) Laravel Production Flow
+Laravel ทั่วไป:
+Browser
+↓
+Nginx
+↓
+PHP-FPM
+↓
+Laravel
+↓
+DB / Redis
+
+38) PHP-FPM คืออะไร
+PHP-FPM = PHP FastCGI Process Manager
+มันคือ Process Manager สำหรับ PHP Workers
+Nginx ไม่รัน PHP เอง
+Flow:
+Nginx
+↓
+FastCGI
+↓
+PHP-FPM worker
+↓
+Laravel
+
+39) Nginx vs PHP-FPM
+Nginx:
+รับ HTTP
+routing
+static files
+proxy
+
+PHP-FPM:
+execute PHP
+manage PHP worker processes
+
+คนละหน้าที่
+40) PHP Request Lifecycle
+Request:
+Nginx
+↓
+PHP-FPM worker
+↓
+bootstrap Laravel
+↓
+route/controller/service
+↓
+response
+↓
+worker พร้อมรับ request ต่อไป
+
+41) PHP-FPM Worker Pool
+เช่น:
+20 workers
+
+หมายถึง PHP Requests ประมาณ 20 งานสามารถ execute พร้อมกันใน Pool นั้น
+Request ที่เกินอาจต้องรอ
+42) Worker Count ไม่ควรตั้งสูงแบบสุ่ม
+เพราะแต่ละ Worker ใช้:
+RAM
+DB connections
+CPU
+
+ถ้ามี 200 Workers แต่ RAM ไม่พอ Server อาจ Swap/Crash
+43) Node.js Model ต่างจาก PHP-FPM
+Node.js มักมี:
+one JS event loop per process
+
+รองรับ I/O Concurrency ได้มาก
+แต่ CPU-heavy work ยัง block Event Loop ได้
+44) Node หลาย Process
+ถ้าต้องใช้หลาย CPU Core อาจรัน:
+Node process 1
+Node process 2
+Node process 3
+Node process 4
+
+ผ่าน PM2/systemd/container replicas
+45) One Process ≠ One Request
+Node สามารถมีหลาย I/O Requests in-flight ใน Process เดียว
+PHP-FPM โดยทั่วไป Worker หนึ่ง execute PHP Request หนึ่ง ณ ช่วงเวลาหนึ่ง
+46) Process Manager คืออะไร
+Process Manager ดูแลว่า Application Process:
+start
+stop
+restart
+recover after crash
+start on boot
+
+47) systemd
+Linux Service Manager ที่พบบ่อยมาก
+สามารถกำหนด:
+ExecStart
+Restart
+Environment
+User
+WorkingDirectory
+
+48) Example Concept
+systemd
+↓
+node server.js
+
+ถ้า Node Crash:
+systemd restart
+
+49) PM2
+นิยมกับ Node.js บางระบบ
+ช่วย:
+process management
+restart
+logs
+cluster mode
+
+แต่ไม่จำเป็นถ้าใช้ systemd/container orchestration อยู่แล้ว
+50) Laravel Worker
+Laravel Queue Worker เป็นอีก Process
+เช่น:
+php artisan queue:work
+
+มันไม่ใช่ HTTP PHP-FPM Worker
+51) Architecture
+Nginx
+↓
+PHP-FPM
+↓
+Laravel HTTP
+
+Queue
+↓
+Laravel queue workers
+
+สองชุด Process แยกกัน
+52) ทำไมต้องแยก
+ถ้า Queue Job หนัก:
+generate PDF 1 min
+
+ไม่ควรกิน HTTP Worker ที่ User รอ Response
+53) Supervisor
+Linux Process Manager ที่นิยมใช้กับ Queue Workers
+เช่นคุม:
+php artisan queue:work
+
+ถ้า Worker ตายก็ Restart
+54) systemd ก็ใช้คุม Worker ได้
+Supervisor ไม่ใช่ทางเดียว
+เลือกตาม Infrastructure/Team
+55) Cron / Scheduler
+งาน Scheduled เช่น:
+ทุก 5 นาที
+ทุกวัน 00:00
+
+อาจใช้:
+cron
+systemd timer
+Laravel Scheduler
+cloud scheduler
+
+56) Cron ไม่เหมือน Queue Worker
+Cron:
+เริ่มงานตามเวลา
+
+Queue:
+เริ่มงานเมื่อมี message/job
+
+57) Production Architecture ตัวอย่าง
+Internet
+↓
+Cloudflare
+↓
+Nginx
+├→ Next.js :3000
+└→ Laravel via PHP-FPM
+       ↓
+       MySQL
+       Redis
+       Queue
+
+58) Database Layer
+Application เชื่อม DB เช่น:
+MySQL
+PostgreSQL
+
+DB ควรอยู่ Private Network ถ้าเป็นไปได้
+59) Application ไม่ควรเปิด DB ให้ Browser
+Browser:
+X → MySQL
+
+ควรเป็น:
+Browser
+→ API
+→ DB
+
+เพราะ Authentication/Authorization/Validation อยู่ API
+60) Redis Layer
+Redis อาจใช้:
+cache
+session
+queue
+rate limit
+distributed lock
+
+ตามระบบ
+61) Redis ไม่ควร Public Internet
+เพราะเป็น Infrastructure Internal
+ควร bind/private firewall ให้เหมาะสม
+62) Queue Layer
+อาจใช้:
+Redis
+RabbitMQ
+Kafka
+SQS-like service
+DB queue
+
+ขึ้นกับ Use Case
+63) Object Storage
+ไฟล์ Upload ไม่จำเป็นต้องเก็บบน Local Disk ของ App Server เสมอไป
+ใช้:
+S3-like storage
+
+เหมาะเมื่อมีหลาย App Instances
+64) ปัญหา Local Upload
+User Upload ไป Server A:
+/uploads/a.jpg
+
+Request ครั้งต่อไปเข้า Server B
+B ไม่มี File
+เกิดปัญหา
+65) Shared Object Storage แก้
+App A ─┐
+App B ─┼→ Object Storage
+App C ─┘
+
+ทุก Server เห็น File เดียวกัน
+66) Stateless App Principle
+App Server ควรทิ้ง/สร้างใหม่ได้ง่าย
+State Durable ควรอยู่:
+DB
+Redis
+object storage
+queue
+
+ไม่ผูกกับ Local Disk/Memory โดยไม่จำเป็น
+67) Session
+ถ้า Session เก็บใน Local Memory Server A:
+User Request ถัดไปเข้า Server B:
+session หาย
+
+ทางเลือก:
+shared Redis session
+database session
+sticky session
+
+โดยทั่วไป Shared Store ยืดหยุ่นกว่า Sticky Session
+68) Sticky Session
+Load Balancer พยายามส่ง User เดิมไป Server เดิม
+ช่วยบางระบบ
+แต่ถ้า Server ตาย:
+session local still lost
+
+ไม่ควรพึ่งเป็น Durable Guarantee
+69) Static Files
+เช่น:
+/logo.svg
+/styles.css
+/app.js
+
+Nginx/CDN สามารถ Serve ได้โดยไม่ผ่าน Application
+70) ทำไมดี
+ไม่ต้องเสีย:
+Node/PHP worker
+DB connection
+application boot
+
+กับ File ที่ไม่ต้อง Logic
+71) Dynamic Request
+เช่น:
+/api/orders/100
+
+ต้องเข้า Application
+เพราะมี:
+auth
+business logic
+DB
+
+72) SSR Request
+Next.js SSR อาจ:
+Browser
+↓
+Nginx
+↓
+Next.js
+↓
+API/DB
+↓
+HTML
+
+ต่างจาก Static Asset
+73) Internal API
+Next.js อาจเรียก Laravel API:
+Next.js
+↓
+Laravel
+↓
+DB
+
+ถ้าอยู่ Network เดียวกัน อาจใช้ Internal Hostname
+ไม่จำเป็นต้องออก Internet แล้ววนกลับ
+74) Service-to-Service Traffic
+เช่น:
+frontend service
+→ backend service
+
+ต้องคิด:
+timeout
+authentication
+DNS
+network
+retry
+
+เหมือน External Call แม้อยู่ Internal Network
+75) Reverse Proxy Routing
+Nginx อาจแบ่ง:
+/        → Next.js
+/api/    → Laravel
+/uploads → static/object proxy
+
+จาก Domain เดียว
+76) Subdomain Architecture
+อีกแบบ:
+www.example.com → Next.js
+api.example.com → Laravel
+admin.example.com → Admin
+
+DNS/Nginx/Load Balancer จัด Routing
+77) TLS/SSL
+HTTPS ใช้ TLS เพื่อ:
+encrypt traffic
+authenticate server
+protect integrity
+
+Certificate ผูกกับ Domain
+78) TLS Termination
+HTTPS อาจถูกถอดรหัสที่:
+CDN
+Load Balancer
+Nginx
+
+เรียกว่า:
+TLS Termination
+79) Example
+Browser --HTTPS--> Nginx
+Nginx --HTTP--> localhost:3000
+
+ภายในเครื่องอาจเป็น HTTP เพราะ Traffic ไม่ออกจาก Host
+80) แต่ Internal Network ก็อาจใช้ TLS
+โดยเฉพาะ:
+zero trust
+multi-region
+sensitive traffic
+
+ขึ้นกับ Security Requirement
+81) Certificate Renewal
+Production Certificate ต้องต่ออายุ
+อาจใช้:
+Let's Encrypt
+managed certificate
+
+และ Automation
+82) HTTP to HTTPS Redirect
+Request:
+http://example.com
+
+Nginx อาจตอบ:
+301/308 → https://example.com
+
+83) Firewall
+Firewall กำหนดว่า Port ไหนรับ Traffic จากไหน
+เช่น:
+22 → office/VPN only
+80 → public
+443 → public
+3306 → private subnet only
+6379 → app servers only
+
+84) Network Segmentation
+Architecture อาจแบ่ง:
+Public subnet
+Private subnet
+Database subnet
+
+Application/DB ไม่จำเป็นต้อง Public ทั้งหมด
+85) Public-facing Components
+มักมี:
+CDN
+Load Balancer
+Reverse Proxy
+
+86) Private Components
+มักมี:
+application
+database
+Redis
+queue
+internal services
+
+ขึ้นกับ Architecture
+87) SSH
+SSH = Secure Shell
+ใช้ Admin Server ผ่าน Network
+เช่น:
+ssh user@server
+
+88) อย่าใช้ root Login แบบสุ่ม
+Production ควร:
+individual user
+SSH key
+sudo when needed
+
+และปิด Password Login ได้ถ้าเหมาะ
+89) SSH Key
+Public Key อยู่ Server
+Private Key อยู่ Client
+ปลอดภัยกว่ารหัสผ่านทั่วไปเมื่อจัดการถูกต้อง
+90) Process
+บน Linux ทุก Program ที่รันคือ Process
+เช่น:
+nginx
+node
+php-fpm
+mysqld
+redis-server
+
+91) PID
+PID = Process ID
+ใช้ระบุ Process
+เช่น:
+ps aux
+
+จะเห็น PID
+92) Parent / Child Process
+Nginx มักมี:
+master process
+worker processes
+
+PHP-FPM ก็มี:
+master
+worker pool
+
+93) CPU
+Server มี CPU Cores จำกัด
+ถ้า Process CPU-heavy มากเกิน:
+CPU = 100%
+
+Request Latency เพิ่ม
+94) RAM
+Process ใช้ Memory
+ถ้า RAM หมด OS อาจ:
+swap
+OOM kill
+
+95) OOM
+OOM = Out Of Memory
+Linux อาจฆ่า Process บางตัวเมื่อ Memory ขาดหนัก
+เรียก:
+OOM Killer
+
+96) Disk
+ใช้เก็บ:
+logs
+files
+database
+build artifacts
+
+Disk เต็มเป็น Production Failure ที่เจอบ่อย
+97) Log File โตไม่หยุด
+เช่น:
+/var/log/app.log
+
+ถ้าไม่มี Rotation:
+disk 100%
+
+Application/DB อาจพัง
+98) Log Rotation
+ใช้หมุน Log เช่น:
+app.log
+app.log.1
+app.log.2.gz
+
+จำกัด Retention/Size
+99) stdout/stderr
+Container/Process สมัยใหม่มักเขียน Log ไป:
+stdout
+stderr
+
+แล้ว Platform เก็บต่อ
+ไม่จำเป็นต้อง App เขียน File เองเสมอไป
+100) Access Log
+Nginx บันทึก:
+IP
+method
+path
+status
+response time
+user agent
+
+ช่วย Debug Traffic
+101) Application Log
+App บันทึก:
+business error
+exception
+request id
+order id
+user-safe context
+
+102) System Log
+Linux/systemd บันทึก:
+service startup
+crash
+kernel issue
+
+เช่นดูด้วย journalctl
+103) Production Debugging ต้องดูหลาย Layer
+ถ้า User บอกเว็บ 502:
+ต้องถามว่า:
+Nginx ทำงานไหม?
+upstream app ทำงานไหม?
+port เปิดไหม?
+process crash ไหม?
+
+104) HTTP 502 Bad Gateway
+มักหมายถึง Proxy ติดต่อ Upstream ไม่สำเร็จ/ได้ Response ผิด
+เช่น:
+Nginx
+↓ X
+Node :3000
+
+Node ตาย
+Nginx อาจตอบ 502
+105) HTTP 504 Gateway Timeout
+Proxy ติดต่อ Upstream ได้ แต่รอนานเกิน Timeout
+เช่น:
+Nginx waits Node
+Node waits DB 60s
+
+แล้ว Timeout
+106) HTTP 500
+Application เอง Error
+เช่น:
+exception
+bug
+DB error
+
+107) HTTP 503
+Service ไม่พร้อมใช้งาน
+อาจมาจาก:
+maintenance
+overload
+no healthy upstream
+
+108) Layered Troubleshooting
+ตัวอย่าง Browser เข้าไม่ได้
+ตรวจ:
+1 DNS resolve ไหม
+2 TCP/port ถึงไหม
+3 TLS ถูกไหม
+4 Nginx ตอบไหม
+5 Upstream app ตอบไหม
+6 DB/Redis พร้อมไหม
+
+ไล่ Layer
+109) localhost
+localhost หมายถึงเครื่องเดียวกับ Process ที่กำลังอ้างถึง
+ถ้า Browser ของคุณเปิด:
+localhost:3000
+
+หมายถึงเครื่องของคุณ
+ไม่ใช่ Server Production
+110) ใน Container localhost ยิ่งต้องระวัง
+Container A:
+localhost
+
+หมายถึง Container A เอง
+ไม่ใช่ Container B
+ต้องใช้ Service Name/Network
+เรื่องนี้จะลงใน Docker ภายหลัง
+111) Binding Address
+Application อาจ Listen:
+127.0.0.1:3000
+
+แปลว่ารับเฉพาะ Local Host
+หรือ:
+0.0.0.0:3000
+
+รับจากทุก Interface ที่ Firewall อนุญาต
+112) Security ของ 127.0.0.1
+ถ้า Nginx กับ Node อยู่เครื่องเดียวกัน:
+Node Listen:
+127.0.0.1:3000
+
+ช่วยไม่ expose Node Port ออก Internet
+113) Multi-machine
+ถ้า Nginx อยู่คนละเครื่องกับ Node
+Node ต้อง Listen บน Private Interface ที่ Nginx เข้าถึงได้
+เช่น:
+10.0.1.5:3000
+
+114) Private IP
+เช่น:
+10.x.x.x
+172.16.x.x
+192.168.x.x
+
+ใช้ภายใน Network
+ไม่ Routable ตรงจาก Public Internet ตามปกติ
+115) Public IP
+ใช้เข้าจาก Internet ได้ ถ้า Routing/Firewall เปิด
+Application Database ไม่ควรมี Public Exposure โดยไม่จำเป็น
+116) Hostname
+แทนจำ IP:
+db.internal
+redis.internal
+api.internal
+
+DNS ภายในช่วย Resolve
+ง่ายต่อ Failover/เปลี่ยน IP
+117) Config ไม่ควร Hardcode IP
+ไม่ดี:
+DB_HOST=10.0.0.42
+
+ถ้า Infrastructure เปลี่ยน IP บ่อย
+Hostname/Service Discovery ยืดหยุ่นกว่า
+118) Environment Separation
+มักมี:
+local
+development
+SIT
+UAT
+staging
+production
+
+แต่ละ Environment มี Config ต่างกัน
+119) Production Config ไม่ควร Copy Local ตรง ๆ
+เช่น Local:
+DEBUG=true
+
+Production ควร:
+DEBUG=false
+
+เพื่อไม่เปิด Stack Trace/Secret
+120) Environment Variables
+ใช้แยก Config ออกจาก Code
+เช่น:
+APP_ENV
+DATABASE_HOST
+REDIS_HOST
+API_BASE_URL
+
+121) แต่ .env ไม่ใช่ Secret Management ที่ดีที่สุดเสมอไป
+Production ขนาดใหญ่ใช้:
+Secret Manager
+Vault
+Kubernetes Secrets
+cloud secret service
+
+เรื่องนี้จะลงภายหลัง
+122) Deploy คืออะไร
+Deployment คือกระบวนการนำ Version ใหม่ของ Application ไปใช้งานจริง
+เช่น:
+Git commit
+↓
+build
+↓
+test
+↓
+artifact
+↓
+deploy
+↓
+restart/reload
+
+123) Deploy ไม่เท่ากับ Copy File อย่างเดียว
+ต้องคิด:
+dependencies
+build
+env
+database migration
+process restart
+cache
+rollback
+health check
+
+124) Artifact
+Artifact คือ Output ที่พร้อม Deploy เช่น:
+Next.js build
+Docker image
+compiled binary
+PHP source + vendor
+
+125) Build Once, Deploy Same Artifact
+แนวคิดที่ดี:
+Build artifact once
+↓
+test it
+↓
+deploy same artifact
+
+ไม่ควร build production แบบสุ่มต่างกันทุก Serverถ้าเลี่ยงได้
+126) Immutable Deployment
+แทนแก้ File บน Server โดยตรง:
+create new release
+switch to it
+
+ง่ายต่อ Rollback
+127) Rollback
+ถ้า Version ใหม่มีปัญหา:
+v2 → fail
+↓
+switch back v1
+
+ต้องเตรียมไว้ก่อนเกิด Incident
+128) Database Migration ทำ Rollback ยากกว่า Code
+ถ้า Code Rollback แต่ Schema เปลี่ยน Breaking:
+old code ใช้ DB ใหม่ไม่ได้
+
+จึงต้องออกแบบ Migration แบบ Compatible
+129) Expand-Contract
+Pattern:
+1 add new schema
+2 code รองรับ old+new
+3 migrate data
+4 switch usage
+5 remove old schema later
+
+ช่วย Rolling Deploy
+130) Zero-downtime Deployment
+เป้าหมายคือ Deploy โดย User แทบไม่รู้สึก
+ใช้:
+multiple instances
+health check
+rolling deploy
+graceful shutdown
+
+131) Rolling Deployment
+เช่นมี 3 Servers:
+A old
+B old
+C old
+
+อัปเดตทีละตัว:
+A new
+B old
+C old
+
+แล้วต่อไปจนครบ
+132) สิ่งสำคัญคือ Old/New Code ต้องอยู่ร่วมกันได้
+ช่วง Deploy มี:
+v1 + v2
+
+รันพร้อมกัน
+API/DB/Queue Payload ต้อง Compatible
+133) Graceful Shutdown
+ก่อนปิด App:
+stop accepting new work
+finish in-flight work
+close connections
+exit
+
+ช่วยลด Request Fail ระหว่าง Deploy
+134) Node Graceful Shutdown
+Process รับ Signal เช่น:
+SIGTERM
+
+แล้ว:
+stop server
+finish requests
+close DB
+exit
+
+135) PHP-FPM Reload
+PHP-FPM/Nginx มีแนวทาง Reload โดยไม่ kill Connections ทั้งหมดทันที
+ใช้ OS/Process Manager ตาม Architecture
+136) Reverse Proxy ช่วย Zero Downtime
+Load Balancer เอา Instance ออกจาก Rotation ก่อน Restart
+เรียกว่า:
+draining
+
+137) Connection Draining
+Server ไม่รับ Request ใหม่
+แต่ปล่อย Request เก่าจบก่อน
+ช่วย Smooth Deployment
+138) Health Check หลัง Deploy
+อย่าคิดว่า Process Started = Healthy
+ต้องตรวจ:
+HTTP responds
+critical dependencies reachable
+basic smoke test
+
+139) Smoke Test
+Test เล็ก ๆ หลัง Deploy
+เช่น:
+GET /
+GET /health
+login flow
+critical API
+
+ตามระบบ
+140) Deployment Failure
+ถ้า Health Check Fail:
+stop rollout
+rollback
+
+ดีกว่าปล่อยทุก Instance เป็น Version เสีย
+141) Monitoring
+Monitoring คือการดู Health ของระบบต่อเนื่อง
+เช่น:
+CPU
+RAM
+disk
+request rate
+error rate
+latency
+
+142) Application Metrics
+เช่น:
+requests/sec
+p95 latency
+5xx rate
+active users
+queue depth
+
+143) Infrastructure Metrics
+เช่น:
+CPU
+memory
+disk
+network
+file descriptors
+
+144) Database Metrics
+connections
+slow queries
+locks
+CPU
+replication lag
+
+145) Monitoring ไม่ใช่ Logging
+Logging:
+รายละเอียด event
+
+Metrics:
+ตัวเลขวัดแนวโน้ม
+
+Tracing:
+request เดินทางข้าม services อย่างไร
+
+สามอย่างรวมเรียก Observability
+146) Alert
+Monitoring ต้องแจ้งเมื่อ:
+5xx > threshold
+disk > 90%
+queue age high
+service down
+
+ไม่ใช่ให้คนเฝ้ Dashboard 24 ชั่วโมง
+147) Alert ที่ดีต้อง Actionable
+ไม่ควร Alert ทุก CPU Spike 1 วินาที
+ควรเป็นสิ่งที่:
+ต้องมีคนสนใจจริง
+
+ไม่งั้นเกิด Alert Fatigue
+148) High Availability
+HA = High Availability
+เป้าหมายคือระบบยังใช้งานได้แม้ Component บางตัวเสีย
+เช่น:
+multiple app servers
+DB replica/failover
+redundant load balancer
+
+149) Single Point of Failure
+SPOF = Single Point of Failure
+ถ้าสิ่งนี้พังแล้วระบบทั้งหมดพัง
+เช่นมี:
+1 app server
+
+แล้วเครื่องตาย = เว็บล่ม
+150) แต่ Redundancy ทุก Layer มี Cost
+ไม่จำเป็นต้องเริ่ม 10 Servers ถ้าเว็บเล็ก
+ต้อง Balance:
+reliability
+complexity
+cost
+
+151) Vertical Scaling
+เพิ่ม Resource เครื่องเดิม:
+CPU 4 → 8 cores
+RAM 8 → 32GB
+
+เรียกว่า:
+Scale Up
+152) Horizontal Scaling
+เพิ่มจำนวนเครื่อง:
+1 server → 3 servers
+
+เรียกว่า:
+Scale Out
+153) Horizontal Scaling ต้อง Stateless มากขึ้น
+เพราะ Request อาจเข้า Server ไหนก็ได้
+ดังนั้น:
+session
+files
+business state
+
+ไม่ควรผูกกับ Local Instance
+154) Vertical Scaling ง่ายกว่า
+แต่มี Limit
+เครื่องใหญ่ขึ้นเรื่อย ๆ:
+ราคาเพิ่ม
+hardware limit
+single failure domain
+
+155) Horizontal Scaling ซับซ้อนกว่า
+ต้องมี:
+load balancer
+shared state
+deployment coordination
+distributed concerns
+
+แต่ Scale ได้ยืดหยุ่นกว่า
+156) Server Architecture ไม่ได้มีแบบเดียว
+เว็บเล็กอาจ:
+1 VM
+├ Nginx
+├ Next.js
+├ Laravel
+├ MySQL
+└ Redis
+
+ได้
+ไม่ผิด
+157) เว็บโตขึ้น
+อาจแยก:
+Web Servers
+API Servers
+Workers
+DB Server
+Redis Server
+Object Storage
+
+158) อย่าแยก Service เพราะดูเท่
+ทุกการแยกเพิ่ม:
+network failure
+deployment complexity
+monitoring
+latency
+
+แยกเมื่อมีเหตุผล
+159) Monolith บน Production ก็ Scale ได้
+เช่น Laravel Monolith
+สามารถรันหลาย Instances หลัง Load Balancer
+ไม่จำเป็นต้อง Microservices เพื่อ Scale
+160) Microservices ไม่ได้แปลว่า Production Better เสมอไป
+เพิ่ม:
+distributed transactions
+network calls
+service discovery
+observability
+DevOps complexity
+
+ต้องมี Requirement รองรับ
+161) Production Architecture ที่ดีคือพอดีกับ Requirement
+ไม่ใช่ Architecture ที่มี Components เยอะที่สุด
+162) Example เล็ก
+Internet
+↓
+Nginx
+↓
+Next.js + Laravel
+↓
+MySQL
+
+อาจพอสำหรับ SME
+163) Example กลาง
+Cloudflare
+↓
+Load Balancer
+↓
+2-4 App Servers
+↓
+Managed DB
+Redis
+Object Storage
+Queue Workers
+
+164) Example ใหญ่ขึ้น
+CDN/WAF
+↓
+Load Balancer
+↓
+Web/API autoscaling
+↓
+Cache / Queue
+↓
+DB cluster
+↓
+Search / Object storage
+↓
+Monitoring
+
+แต่ทุก Layerต้องมีเหตุผล
+165) Production Request Example — Next.js
+User:
+GET /products/100
+
+Flow:
+Browser
+↓
+DNS
+↓
+Cloudflare
+↓
+Nginx
+↓
+Next.js
+↓
+API/DB
+↓
+HTML/JSON
+↓
+Browser
+
+166) Production Request Example — Laravel API
+POST /api/orders
+
+Flow:
+Browser
+↓
+DNS/CDN
+↓
+Nginx
+↓
+PHP-FPM
+↓
+Laravel
+↓
+MySQL
+↓
+Redis
+↓
+response
+
+167) Async Side Effect
+Laravel:
+create order
+↓
+dispatch queue job
+↓
+response
+
+ต่อมา:
+Worker
+↓
+send email
+
+User ไม่ต้องรอ Email
+168) Failure Example
+Node Process ตาย
+Browser
+↓
+Nginx
+↓
+Node X
+
+ถ้ามี Process Manager:
+systemd restart Node
+
+169) แต่ช่วง Restart อาจมี 502
+ถ้ามี Instance เดียว
+ถ้ามี 3 Instances + Load Balancer:
+remove failed instance
+
+User อาจไม่รู้สึก
+170) Database Down
+ต่อให้มี 10 App Servers
+ถ้าทุก Request ต้อง DB และ DB เดียวล่ม:
+system still down
+
+Availability ต้องคิดทั้ง Dependency Graph
+171) Redis Down
+Impact ขึ้นกับใช้ Redis ทำอะไร
+ถ้า:
+cache
+
+อาจ fallback DB
+ถ้า:
+session
+queue
+
+Impact สูงกว่า
+172) Dependency Criticality
+ควรแยกว่า:
+required
+optional
+
+เช่น:
+DB → required
+recommendation service → optional
+
+173) Graceful Degradation
+Recommendation ล่ม:
+หน้าเว็บยังเปิด
+แค่ไม่มี recommendation
+
+ดีกว่า 500 ทั้งหน้า
+174) Production Design Question
+ทุก Dependency ควรถาม:
+ถ้ามันล่ม เว็บส่วนไหนยังควรทำงาน?
+
+นี่เป็น System Design Thinking สำคัญ
+175) Another Important Question
+ถ้ามันช้า 30 วินาที จะเกิดอะไร?
+
+เพราะ Service “ช้า” บางครั้งอันตรายกว่า Service “ตาย”
+มันกิน Connection/Worker ค้าง
+176) Timeout
+ทุก Network Dependency ต้องมี Timeout
+เช่น:
+DB query timeout
+HTTP timeout
+Redis timeout
+
+ไม่รอ Forever
+177) Reverse Proxy Timeout
+Nginx ก็มี:
+connect timeout
+read timeout
+send timeout
+
+ต้องสัมพันธ์กับ App Behavior
+178) อย่าแก้ App ช้าด้วยเพิ่ม Nginx Timeout เป็น 10 นาทีทันที
+อาจแค่ทำให้ User รอนานกว่าเดิม
+ต้องหา Root Cause
+179) Request Size Limit
+Nginx สามารถจำกัด Upload:
+max body size
+
+ป้องกัน File ใหญ่เกิน Requirement
+180) Compression
+Nginx/CDN สามารถ Compress:
+HTML
+CSS
+JS
+JSON
+
+เช่น gzip/Brotli
+ลด Bandwidth
+181) Static Cache Headers
+เช่น:
+Cache-Control
+ETag
+Last-Modified
+
+ช่วย Browser/CDN Cache
+182) Dynamic Cache ต้องระวัง
+ห้าม Cache:
+private account page
+personalized response
+
+แบบ Public โดยไม่ตั้ง Policy ถูก
+อาจข้อมูลรั่ว
+183) Request ID
+ควรสร้าง:
+request_id
+
+ต่อ Request
+ส่งผ่าน Nginx/App/Services
+ช่วย Trace
+184) Example
+request_id = abc123
+
+Nginx Log:
+abc123 /checkout
+
+Laravel Log:
+abc123 creating order
+
+Debug ง่ายมาก
+185) Correlation ID
+เมื่อ Request กระจายไป Queue/Service อื่น
+สามารถส่ง:
+correlation_id
+
+ไปด้วย
+ช่วยเชื่อม Workflow
+186) Time Synchronization
+Servers ควรมีเวลาใกล้กัน
+ใช้:
+NTP
+
+เพราะ Logs/Certificates/Scheduling ต้องอาศัยเวลา
+187) แต่ไม่ควรใช้ Clock อย่างเดียวแก้ Distributed Ordering
+เรื่อง Concurrency เราเรียนแล้วว่า:
+version/sequence
+
+มักแข็งแรงกว่าสำหรับ Ordering
+188) Server Timezone
+Production บางทีมใช้:
+UTC
+
+ใน Server/DB
+แล้วแปลง Display ตาม User Timezone
+ช่วยลดความสับสน
+189) Application Timezone
+Laravel/Node อาจมี Timezone Config แยก
+ต้องเข้าใจว่า:
+OS
+DB
+application
+user
+
+อาจไม่ใช่ Timezone เดียวกัน
+190) Production Request Lifecycle Summary
+1 User enters URL
+2 DNS resolves
+3 CDN/WAF receives
+4 Load Balancer chooses server
+5 Nginx handles HTTPS/routing
+6 App receives request
+7 App queries DB/Redis/services
+8 App creates response
+9 Nginx returns response
+10 CDN/browser may cache
+
+191) Async Lifecycle
+ถ้า App Dispatch Job:
+11 Queue stores job
+12 Worker receives
+13 Worker processes
+14 external service/DB updated
+15 retry/DLQ if failed
+
+192) Production Responsibility Separation
+DNS
+→ find destination
+
+CDN
+→ edge/cache/protection
+
+Load Balancer
+→ distribute
+
+Nginx
+→ HTTP gateway/proxy
+
+Application
+→ business logic
+
+DB
+→ durable structured data
+
+Redis
+→ fast shared state/cache
+
+Queue
+→ async work
+
+Worker
+→ background processing
+
+193) Process Manager
+systemd / PM2 / Supervisor
+→ keep processes alive
+
+194) CI/CD
+automate build/test/deploy
+
+จะเรียนภายหลัง
+195) Monitoring
+know system health
+
+196) Logging
+know what happened
+
+197) Backup
+recover lost/corrupt data
+
+Replication ไม่แทน Backup
+198) Security
+firewall
+SSH
+TLS
+least privilege
+secrets
+patching
+
+เป็นส่วนหนึ่งของ Production Architecture ตั้งแต่แรก
+199) Production Mental Model ที่ควรจำ
+อย่ามอง Server เป็นกล่องเดียวว่า:
+เว็บอยู่บน server
+
+ให้มองเป็น Layers:
+Network
+↓
+Proxy
+↓
+Runtime
+↓
+Application
+↓
+Data
+↓
+Background Work
+↓
+Observability
+
+เวลาพัง เราจะไล่หาได้เป็นชั้น
+200) อีก Mental Model สำคัญ
+เมื่อ User บอกว่า:
+"เว็บเข้าไม่ได้"
+
+อย่ากระโดดไปแก้ Code ทันที
+ต้องไล่:
+DNS?
+Network?
+TLS?
+Nginx?
+Process?
+Application?
+Database?
+Dependency?
+
+นี่คือ Mindset สำคัญมากของ Full Stack Developer ที่ต้องดู Production
+สรุป 6.1
+Production Web Architecture โดยทั่วไปมี Flow:
+Browser
+↓
+DNS
+↓
+CDN / WAF
+↓
+Load Balancer
+↓
+Nginx / Reverse Proxy
+↓
+Application Runtime
+├→ Node.js / Next.js
+└→ PHP-FPM / Laravel
+↓
+Database / Redis / Queue / Object Storage
+
+แต่ละ Layer มีหน้าที่ต่างกัน และการแยก Layer ให้ชัดช่วยทั้ง Security, Scaling, Deployment และ Troubleshooting
+สิ่งสำคัญที่สุดของบทนี้คือ:
+Production ไม่ใช่แค่การเอา Source Code ไปเปิดบน Server แต่เป็นการสร้างเส้นทางตั้งแต่ Network → Proxy → Runtime → Application → Data → Background Work ให้ทุก Layer สามารถถูก Deploy, Monitor, Recover และ Scale ได้อย่างเหมาะสม
+
+
+6.2 Linux Server Fundamentals & Administration แบบลงลึก
+บทนี้จะพาให้เข้าใจ Linux ในมุมที่ Developer ใช้จริงบน Server เช่น ไฟล์อยู่ตรงไหน, process ไหนรันอยู่, user ไหนมีสิทธิ์อะไร, service ไหนเปิดอยู่, disk/RAM/CPU เป็นอย่างไร และเวลา Production มีปัญหาควรใช้คำสั่งอะไรไล่ดู
+Mental Model:
+Linux Server
+├→ Filesystem
+├→ Users / Groups
+├→ Permissions
+├→ Processes
+├→ Services
+├→ Packages
+├→ Network
+├→ CPU / RAM / Disk
+└→ Logs
+
+1) Linux สำคัญกับ Web Developer ยังไง
+ระบบ Production จำนวนมากรันบน Linux เพราะ:
+เสถียร
+จัดการผ่าน SSH ได้ดี
+มีเครื่องมือ server เยอะ
+เหมาะกับ automation
+รองรับ container/cloud ดี
+
+Developer ที่ดู Production ควรอ่าน Server State ได้ ไม่จำเป็นต้องเป็น SysAdmin เต็มตัว แต่ต้องรู้ว่ากำลังเกิดอะไรขึ้น
+2) Linux Filesystem ไม่เหมือน Windows
+Windows:
+C:\
+D:\
+
+Linux เริ่มจาก:
+/
+
+เรียกว่า Root Directory
+ทุกอย่างอยู่ใต้ /
+3) Directory สำคัญ
+ตัวอย่าง:
+/
+├── home
+├── etc
+├── var
+├── usr
+├── opt
+├── tmp
+├── root
+├── proc
+├── dev
+└── run
+
+4) /home
+เก็บ Home Directory ของ User ปกติ
+เช่น:
+/home/deploy
+/home/ubuntu
+/home/agelus
+
+ถ้า Login เป็น user deploy
+Home มักเป็น:
+/home/deploy
+
+5) ~
+เครื่องหมาย:
+~
+
+หมายถึง Home Directory ของ User ปัจจุบัน
+เช่น:
+cd ~
+
+ถ้า user คือ deploy
+จะไป:
+/home/deploy
+
+6) /root
+คือ Home Directory ของ user root
+ไม่ใช่ Root Filesystem
+สองคำนี้คนละเรื่อง:
+/
+→ filesystem root
+
+/root
+→ home ของ root user
+
+7) /etc
+เก็บ System Configuration
+เช่น:
+/etc/nginx
+/etc/php
+/etc/ssh
+/etc/systemd
+
+เวลาตั้ง Server จะเจอ /etc บ่อยมาก
+8) /var
+var = Variable Data
+เก็บข้อมูลที่เปลี่ยนตลอด เช่น:
+/var/log
+/var/lib
+/var/cache
+/www บางระบบ
+
+9) /var/log
+เก็บ Logs
+เช่น:
+/var/log/nginx
+/var/log/mysql
+/var/log/syslog
+
+เป็นที่แรก ๆ ที่ควรนึกถึงเวลา Troubleshoot
+10) /usr
+เก็บ Programs/Libraries ที่ติดตั้งในระบบจำนวนมาก
+เช่น:
+/usr/bin
+/usr/sbin
+/usr/lib
+/usr/local
+
+11) /usr/bin
+มี Commands ทั่วไปจำนวนมาก เช่น:
+curl
+git
+python
+
+แล้วแต่ Distribution/Package
+12) /usr/local
+มักใช้กับ Software ที่ติดตั้งเพิ่มเติมนอก Package Manager หลัก
+เช่น:
+/usr/local/bin
+
+13) /opt
+มักใช้วาง Third-party Application
+เช่น:
+/opt/myapp
+/opt/vendor-app
+
+แต่ไม่มีกฎบังคับตายตัว
+14) /tmp
+Temporary Files
+เช่น:
+/tmp
+
+ข้อมูลในนี้อาจถูกล้างได้
+จึงไม่ควรเก็บข้อมูลสำคัญ
+15) /proc
+ไม่ใช่ Directory ไฟล์ธรรมดา
+เป็น Virtual Filesystem ที่ Kernel สร้างขึ้น
+ใช้ดูข้อมูล Process/System เช่น:
+/proc/cpuinfo
+/proc/meminfo
+
+16) /dev
+แสดง Devices เป็นไฟล์
+เช่น:
+/dev/null
+/dev/sda
+
+ใน Linux หลายอย่างถูก model เป็น File
+17) /run
+เก็บ Runtime State ชั่วคราว เช่น PID/socket/state ของ Services
+มักหายหลัง reboot
+18) Current Directory
+ดูว่าอยู่ไหน:
+pwd
+
+pwd = Print Working Directory
+19) ดูไฟล์
+ls
+
+ละเอียดขึ้น:
+ls -l
+
+รวม Hidden Files:
+ls -la
+
+20) Hidden File
+ไฟล์ขึ้นต้นด้วย .
+เช่น:
+.env
+.git
+.bashrc
+.ssh
+
+ls ปกติอาจไม่แสดง
+ต้อง:
+ls -a
+
+21) เปลี่ยน Directory
+cd /var/log
+
+ย้อนขึ้นหนึ่งระดับ:
+cd ..
+
+กลับ Home:
+cd ~
+
+22) Absolute Path
+เริ่มด้วย /
+เช่น:
+/var/www/myapp
+
+เป็นตำแหน่งแน่นอนจาก Root
+23) Relative Path
+เช่น:
+./storage
+../logs
+
+อิง Current Directory
+24) . และ ..
+.
+→ current directory
+
+..
+→ parent directory
+
+25) สร้าง Directory
+mkdir logs
+
+หลายระดับ:
+mkdir -p storage/logs/archive
+
+26) สร้างไฟล์เปล่า
+touch app.log
+
+27) Copy
+cp source.txt dest.txt
+
+Directory:
+cp -r source-dir dest-dir
+
+28) Move / Rename
+mv old.txt new.txt
+
+ใช้ย้ายไฟล์ด้วย:
+mv app.log /var/log/myapp/
+
+29) Delete File
+rm file.txt
+
+Directory:
+rm -r folder
+
+ต้องระวังมาก
+30) rm -rf
+rm -rf folder
+
+หมายถึง:
+recursive
++
+force
+
+ทรงพลังและอันตรายมาก
+บน Production ต้องเช็ก Path ก่อนทุกครั้ง
+31) Rule สำคัญก่อน rm -rf
+ควร:
+pwd
+ls
+
+ก่อน
+โดยเฉพาะถ้ามี Variable ใน Script
+32) อ่านไฟล์
+cat file.txt
+
+เหมาะกับไฟล์สั้น
+33) ไฟล์ยาวใช้ less
+less app.log
+
+ค้นหาใน less:
+/error
+
+ออก:
+q
+
+34) ดูต้นไฟล์
+head file.txt
+
+เช่น 20 บรรทัด:
+head -n 20 file.txt
+
+35) ดูท้ายไฟล์
+tail file.txt
+
+ดู 100 บรรทัด:
+tail -n 100 app.log
+
+36) Follow Log แบบ Real-time
+tail -f app.log
+
+เวลา Request เข้ามา บรรทัดใหม่จะขึ้นต่อเนื่อง
+ใช้ Debug Production บ่อยมาก
+37) Stop tail -f
+กด:
+Ctrl + C
+
+38) Search Text ด้วย grep
+เช่น:
+grep "ERROR" app.log
+
+ไม่สนตัวพิมพ์:
+grep -i "error" app.log
+
+39) Recursive grep
+ค้นทุกไฟล์ใน Directory:
+grep -R "DATABASE_URL" .
+
+ต้องระวัง Secret ตอนแสดงผล
+40) Pipeline |
+เอา Output จากคำสั่งหนึ่งไปอีกคำสั่ง
+เช่น:
+ps aux | grep node
+
+Flow:
+ps aux output
+↓
+grep node
+
+41) Redirect Output
+เขียน Output ลง File:
+command > output.txt
+
+จะ overwrite File
+42) Append
+command >> output.txt
+
+เพิ่มท้าย File
+43) stderr Redirect
+Error Stream คือ File Descriptor 2
+เช่น:
+command 2> error.log
+
+44) stdout + stderr
+เช่น:
+command > app.log 2>&1
+
+เก็บทั้ง Output และ Error ใน File เดียว
+45) User คืออะไร
+Linux เป็น Multi-user System
+เช่น:
+root
+ubuntu
+deploy
+www-data
+mysql
+
+แต่ละ User มีสิทธิ์ต่างกัน
+46) ดู User ปัจจุบัน
+whoami
+
+47) ดู User ID / Groups
+id
+
+เช่นอาจเห็น:
+uid=1001(deploy)
+gid=1001(deploy)
+groups=1001(deploy),27(sudo)
+
+48) Group
+Group ใช้รวม User เพื่อจัด Permissions
+เช่น:
+www-data
+developers
+sudo
+
+49) Root User
+root มีสิทธิ์สูงสุด
+สามารถแก้:
+system files
+permissions
+users
+services
+packages
+
+จึงไม่ควรใช้ root ตลอดเวลา
+50) Principle: Least Privilege
+ให้ User มีสิทธิ์เท่าที่จำเป็น
+Developer Deploy ไม่จำเป็นต้องเป็น root ตลอด
+51) sudo
+ใช้ Run Command ด้วยสิทธิ์ Elevated
+เช่น:
+sudo systemctl restart nginx
+
+แทน Login root ค้างไว้
+52) ทำไม sudo ดีกว่าใช้ root ตลอด
+เพราะ:
+ลด accidental damage
+audit ได้ง่ายกว่า
+แยก privilege ชัดกว่า
+
+53) File Ownership
+ทุก File มี:
+owner
+group
+
+ดู:
+ls -l
+
+ตัวอย่าง:
+-rw-r--r-- 1 deploy www-data 1200 app.log
+
+54) Permission String
+ตัวอย่าง:
+-rwxr-xr--
+
+แบ่งเป็น:
+owner
+group
+others
+
+55) Permission มี 3 แบบ
+r = read
+w = write
+x = execute
+
+56) Example
+rwx r-x r--
+
+แปลว่า:
+Owner:
+read
+write
+execute
+
+Group:
+read
+execute
+
+Others:
+read
+
+57) Numeric Permission
+r = 4
+w = 2
+x = 1
+
+รวมกัน
+58) 755
+7 = rwx
+5 = r-x
+5 = r-x
+
+จึง:
+owner rwx
+group r-x
+others r-x
+
+59) 644
+6 = rw-
+4 = r--
+4 = r--
+
+ใช้กับ File ธรรมดาบ่อย
+60) 600
+owner = rw-
+others = none
+
+เหมาะกับ Sensitive File บางชนิด
+เช่น Private Key
+61) เปลี่ยน Permission
+chmod 755 script.sh
+
+62) เพิ่ม Execute
+chmod +x deploy.sh
+
+63) เปลี่ยน Owner
+sudo chown deploy:www-data app.log
+
+รูปแบบ:
+owner:group
+
+64) Recursive Ownership
+sudo chown -R deploy:www-data storage
+
+ต้องระวัง ไม่ควร chown -R กว้างเกิน
+65) Web App Permission Problem
+Laravel มักต้องให้ Runtime เขียน:
+storage
+bootstrap/cache
+
+ถ้า Owner/Permission ผิด:
+Permission denied
+
+66) วิธีแก้ที่ไม่ดี
+chmod -R 777 .
+
+แม้จะ “หาย” แต่เปิดสิทธิ์กว้างเกินไป
+67) 777 หมายถึง
+ทุกคน read/write/execute
+
+มักไม่เหมาะกับ Production
+ควรแก้ Owner/Group ให้ถูก
+68) Directory Execute Permission
+สำหรับ Directory x หมายถึงสามารถ Traverse เข้า Directory ได้
+ไม่ใช่ Execute File แบบตรง ๆ
+69) Process คืออะไร
+Process คือ Program ที่กำลังรัน
+เช่น:
+nginx
+node
+php-fpm
+mysql
+redis
+
+70) ดู Processes
+ps aux
+
+71) หา Process
+ps aux | grep node
+
+หรือ:
+pgrep node
+
+72) PID
+Process ID
+เช่น:
+7420
+
+ใช้ Kill/Inspect Process
+73) Parent PID
+Process อาจถูกสร้างจาก Parent Process
+ดู:
+ps -ef
+
+จะเห็น PID/PPID
+74) Process Tree
+pstree
+
+ช่วยเห็น:
+systemd
+└─ nginx
+   ├─ worker
+   └─ worker
+
+75) Foreground Process
+เช่นรัน:
+npm run dev
+
+Terminal ถูก Process ครอง
+ถ้าปิด Terminal Process อาจหยุด
+76) Background Process
+ใน Shell ใช้:
+command &
+
+แต่สำหรับ Production Service ไม่ควรพึ่ง & อย่างเดียว
+ควรใช้:
+systemd
+PM2
+Supervisor
+container runtime
+
+77) Ctrl + C
+ส่ง Signal เพื่อหยุด Foreground Process โดยทั่วไปคือ SIGINT
+78) Signals
+Linux ใช้ Signals ควบคุม Process เช่น:
+SIGTERM
+SIGINT
+SIGHUP
+SIGKILL
+
+79) SIGTERM
+ขอให้ Process ปิดตัวอย่างสุภาพ
+kill PID
+
+โดย default มักส่ง SIGTERM
+80) SIGKILL
+kill -9 PID
+
+Kernel ฆ่า Process ทันที
+Process ไม่มีโอกาส Cleanup
+ใช้เมื่อจำเป็นจริง ๆ
+81) Rule
+ลอง:
+SIGTERM
+
+ก่อน
+ค่อย SIGKILL ถ้า Process ไม่ยอมตาย
+82) Zombie Process
+Process ลูกจบแล้วแต่ Parent ยังไม่ collect exit status
+อาจเห็น State:
+Z
+
+เรียกว่า Zombie
+ไม่ได้ใช้ CPU แต่ถ้ามีเยอะผิดปกติควรตรวจ Parent
+83) Orphan Process
+Parent ตาย แต่ Child ยังรัน
+ระบบจะ re-parent ให้ Process Manager ตามกลไก OS
+84) top
+ดู Resource Usage แบบ Real-time:
+top
+
+เห็น:
+CPU
+memory
+load
+processes
+
+85) htop
+เป็น UI ที่อ่านง่ายกว่า top
+แต่บางเครื่องต้องติดตั้งเพิ่ม
+86) CPU %
+ถ้า Process:
+CPU 100%
+
+บน Multi-core System ความหมายต้องดู Tool/Configuration ด้วย
+อาจเป็นการใช้เต็มหนึ่ง Core
+87) Load Average
+Linux แสดง:
+load average: 1m 5m 15m
+
+เช่น:
+2.10 1.80 1.20
+
+88) Load Average ไม่เท่ากับ CPU %
+มันสะท้อนจำนวน Tasks ที่กำลัง runnable/uninterruptible โดยประมาณ
+ต้องเทียบกับจำนวน CPU Cores
+89) ตัวอย่าง
+4 cores
+load:
+4
+
+อาจหมายถึงเครื่อง Busy ใกล้เต็ม
+load:
+20
+
+แปลว่ามีงานต่อคิวเยอะ
+แต่ต้องดู I/O ด้วย
+90) ดู CPU Info
+lscpu
+
+หรือ:
+nproc
+
+ดูจำนวน Processing Units ที่ระบบมองเห็น
+91) Memory
+ดู:
+free -h
+
+เช่น:
+total
+used
+free
+available
+
+92) อย่าดู free อย่างเดียว
+Linux ใช้ RAM ทำ Cache
+จึงควรดู:
+available
+
+ประกอบ
+93) Swap
+เมื่อ RAM ไม่พอ OS อาจใช้ Disk เป็น Memory ชั่วคราว
+เรียกว่า:
+swap
+
+94) Swap ช้ากว่า RAM มาก
+ถ้าระบบ Swap หนัก:
+latency พุ่ง
+
+ควรหาว่า Memory Pressure มาจากอะไร
+95) OOM Killer
+ถ้า Memory ขาดหนัก Linux อาจฆ่า Process
+ดู Log เช่น:
+dmesg
+
+หรือ journalctl
+96) Disk Usage
+ดู:
+df -h
+
+เช่น:
+Filesystem
+Size
+Used
+Avail
+Use%
+
+97) df
+ดูระดับ Filesystem
+ถ้า:
+Use% = 100%
+
+อันตรายมาก
+DB/Logs/Application อาจเขียนไม่ได้
+98) หา Directory ไหนกินพื้นที่
+du -sh *
+
+หรือ:
+du -sh /var/* 2>/dev/null
+
+99) du
+du = Disk Usage ระดับ File/Directory
+ต่างจาก df ที่ดู Filesystem Capacity
+100) หาไฟล์ใหญ่
+เช่น:
+find /var/log -type f -size +1G
+
+ช่วยหา Log ขนาดใหญ่
+101) Inode
+Filesystem ไม่ได้มีแค่พื้นที่ Byte
+ยังมี Inode
+ถ้ามีไฟล์เล็กจำนวนมหาศาลอาจ:
+disk space เหลือ
+แต่ inode หมด
+
+102) ดู Inode
+df -i
+
+103) Example
+สร้างไฟล์ Cache หลายล้านไฟล์
+อาจทำ Inode เต็มก่อน Disk เต็ม
+104) Service คืออะไร
+Service คือ Process ที่ตั้งใจให้ทำงานต่อเนื่อง เช่น:
+nginx
+php-fpm
+mysql
+redis
+my-next-app
+
+105) systemd
+Linux Distribution สมัยใหม่จำนวนมากใช้ systemd จัดการ Services
+คำสั่งหลัก:
+systemctl
+
+106) ดู Status
+systemctl status nginx
+
+107) Start
+sudo systemctl start nginx
+
+108) Stop
+sudo systemctl stop nginx
+
+109) Restart
+sudo systemctl restart nginx
+
+หยุดแล้วเริ่มใหม่
+อาจมี interruption
+110) Reload
+บาง Service รองรับ:
+sudo systemctl reload nginx
+
+โหลด Config ใหม่โดยไม่ Restart เต็มรูปแบบ
+111) Enable
+ให้ Service Start อัตโนมัติตอน Boot:
+sudo systemctl enable nginx
+
+112) Disable
+sudo systemctl disable nginx
+
+113) is-active
+systemctl is-active nginx
+
+114) is-enabled
+systemctl is-enabled nginx
+
+115) Service Active ไม่ได้แปลว่า Application Healthy
+Nginx active แต่:
+upstream app dead
+
+เว็บยัง 502 ได้
+ต้องดูทั้ง Layer
+116) Logs ของ systemd
+ใช้:
+journalctl
+
+ดู Service:
+journalctl -u nginx
+
+117) Follow Real-time
+journalctl -u myapp -f
+
+เหมือน tail -f
+118) Logs ช่วงล่าสุด
+เช่น:
+journalctl -u nginx --since "10 minutes ago"
+
+ช่วย Incident Debug
+119) Boot Logs
+journalctl -b
+
+ดูตั้งแต่ Boot ปัจจุบัน
+120) Package Manager
+Ubuntu/Debian ใช้:
+apt
+
+เช่น:
+sudo apt update
+
+121) apt update
+อัปเดต Package Index
+ไม่ได้ Update Software ทุกตัวทันที
+122) Install
+sudo apt install nginx
+
+123) Upgrade
+sudo apt upgrade
+
+แต่ Production ต้องระวัง Version/Restart
+ไม่ควร Upgrade แบบสุ่มระหว่าง Traffic Peak
+124) Remove
+sudo apt remove nginx
+
+125) Package Repository
+apt ดาวน์โหลด Software จาก Repository ที่ Config ไว้
+ไม่ใช่ Download Random Binary เองทุกครั้ง
+126) OS Update สำคัญ
+โดยเฉพาะ:
+security patches
+kernel
+OpenSSL
+SSH
+
+แต่ต้องมี Maintenance Strategy
+127) Kernel
+Kernel คือ Core ของ Linux
+จัดการ:
+CPU
+memory
+process
+devices
+network
+filesystem
+
+Application ไม่คุย Hardware โดยตรง
+128) ดู Kernel Version
+uname -a
+
+หรือ:
+uname -r
+
+129) Hostname
+ดู:
+hostname
+
+หรือ:
+hostnamectl
+
+130) Hostname ที่ดี
+เช่น:
+web-prod-01
+worker-prod-02
+db-prod-01
+
+ช่วยอ่าน Logs/Monitoring ง่าย
+131) Environment Variable
+ดู Environment ปัจจุบัน:
+env
+
+หรือ:
+printenv
+
+132) ดู Variable
+echo $PATH
+
+133) Set Variable ชั่วคราว
+export APP_ENV=production
+
+ใช้ได้ใน Shell/Child Processes ชุดนั้น
+134) Process Environment แยกกัน
+แก้ Variable ใน Shell ใหม่ ไม่ได้หมายความว่า Process ที่รันอยู่แล้วจะเห็นค่าใหม่
+ต้อง Restart/Reload Process ตาม Runtime
+135) $PATH
+กำหนด Directory ที่ Shell ใช้ค้นหา Executable
+เช่น:
+/usr/local/bin
+/usr/bin
+/bin
+
+136) which
+ดู Command มาจากไหน:
+which node
+
+เช่น:
+/usr/bin/node
+
+137) Version Check
+node -v
+php -v
+nginx -v
+git --version
+
+สำคัญมากเวลา Debug “เครื่องนี้ใช้ Version อะไร”
+138) Shell
+Shell คือ Program ที่รับ Command
+เช่น:
+bash
+zsh
+sh
+
+บน Server มักเจอ Bash
+139) Shell Script
+ไฟล์:
+deploy.sh
+
+สามารถรวม Commands
+เช่น:
+#!/bin/bash
+git pull
+npm ci
+npm run build
+
+แต่ Production Deployment ควร robust กว่านี้ในระยะยาว
+140) Shebang
+บรรทัด:
+#!/bin/bash
+
+บอก OS ว่าใช้ Interpreter อะไร
+141) Exit Code
+ทุก Command มี Exit Status
+ปกติ:
+0
+→ success
+
+non-zero
+→ error
+
+142) ดู Exit Code ล่าสุด
+echo $?
+
+143) Script ควรหยุดเมื่อ Error
+มักเห็น:
+set -e
+
+แต่ต้องเข้าใจ Behavior ก่อนใช้ เพราะมีรายละเอียดหลายกรณี
+144) &&
+รันคำสั่งถัดไปเมื่อก่อนหน้าสำเร็จ
+npm ci && npm run build
+
+ถ้า npm ci fail:
+build ไม่รัน
+
+145) ||
+รันเมื่อคำสั่งก่อนหน้า Fail
+command || echo "failed"
+
+146) Process Listening Port
+ดู:
+ss -lntp
+
+ช่วยหา:
+ใคร listen port 3000?
+
+147) ตัวเลือกคร่าว ๆ
+-l = listening
+-n = numeric
+-t = TCP
+-p = process
+
+148) Example
+LISTEN 0 511 127.0.0.1:3000
+
+แปลว่า App รอ Connection อยู่ที่:
+localhost port 3000
+
+149) ถ้า Nginx Proxy ไป 3000 แล้วไม่มี Listener
+มักได้:
+502 Bad Gateway
+
+150) curl
+เครื่องมือสำคัญมากสำหรับ Debug HTTP
+เช่น:
+curl http://127.0.0.1:3000
+
+ใช้ทดสอบ App โดยไม่ผ่าน Nginx
+151) Debug Layer
+ถ้า:
+curl http://127.0.0.1:3000
+
+สำเร็จ
+แต่ Domain เข้าไม่ได้
+แปลว่า App อาจปกติ ปัญหาอยู่ Layer ก่อนหน้า เช่น:
+Nginx
+TLS
+DNS
+Firewall
+
+152) curl -I
+ดู Response Headers:
+curl -I https://example.com
+
+153) Verbose
+curl -v https://example.com
+
+ช่วยดู:
+DNS
+TCP
+TLS
+headers
+
+154) DNS Debug
+ใช้:
+dig example.com
+
+หรือ:
+nslookup example.com
+
+ถ้ามี Tool ติดตั้ง
+155) Network Interfaces
+ดู:
+ip addr
+
+หรือสั้น:
+ip a
+
+156) Routing
+ดู:
+ip route
+
+ช่วยเข้าใจ Traffic ออก Gateway ไหน
+157) Ping
+ping 8.8.8.8
+
+ทดสอบ Network ระดับหนึ่ง
+แต่ Server บางแห่ง block ICMP ดังนั้น ping fail ไม่ได้แปลว่า Service Down เสมอไป
+158) Port Connectivity
+สามารถใช้:
+nc -zv host 3306
+
+เพื่อทดสอบว่า TCP Port เชื่อมได้ไหม
+ถ้ามี nc
+159) Example DB Debug
+Application ต่อ DB ไม่ได้
+เช็ก:
+DNS resolve?
+network route?
+firewall?
+port listening?
+credentials?
+DB max connections?
+
+อย่าคิดว่า password ผิดทันที
+160) uptime
+uptime
+
+แสดง:
+เครื่องเปิดมานานเท่าไร
+users
+load average
+
+161) ถ้า Server Reboot โดยไม่รู้ตัว
+uptime สั้นผิดปกติอาจเป็นเบาะแส
+จากนั้นดู journalctl
+162) who
+ดู User ที่ Login:
+who
+
+163) last
+ดู Login History:
+last
+
+มีประโยชน์ด้าน Audit เบื้องต้น
+164) File Descriptor
+Process ใช้ File Descriptor สำหรับ:
+files
+sockets
+pipes
+
+ถ้าเปิดเยอะเกิน Limit อาจเจอ:
+Too many open files
+
+165) ดู Limit
+ulimit -n
+
+ดู Max Open Files ของ Shell ปัจจุบัน
+166) อย่าเพิ่ม Limit อย่างเดียวโดยไม่หาสาเหตุ
+ถ้ามี Connection Leak:
+เพิ่ม ulimit
+
+แค่เลื่อนเวลาพัง
+ต้องหา Root Cause
+167) lsof
+ถ้ามีติดตั้ง:
+lsof -p PID
+
+ดู Files/Sockets ที่ Process เปิด
+168) หาใครใช้ Port
+lsof -i :3000
+
+หรือใช้ ss
+169) Disk I/O
+บางที CPU ต่ำแต่ Server ช้าเพราะ Disk I/O
+Tools เช่น:
+iostat
+iotop
+
+อาจต้องติดตั้งเพิ่ม
+170) I/O Wait
+CPU อาจดูไม่ 100% แต่ Process รอ Disk มาก
+จึงต้องดู Resource หลายด้าน
+171) CPU-bound vs I/O-bound
+CPU-bound:
+CPU เต็ม
+
+I/O-bound:
+รอ disk/network/DB
+
+วิธีแก้ต่างกัน
+172) Memory Leak
+Process ใช้ RAM เพิ่มต่อเนื่อง:
+500MB
+1GB
+2GB
+4GB
+
+อาจมี Leak
+Restart ช่วยชั่วคราว แต่ต้องแก้ Code/Dependency
+173) Process Crash Loop
+Process:
+start
+crash
+restart
+crash
+restart
+
+systemd อาจพยายาม Restart ต่อเนื่อง
+ต้องดู Log ไม่ใช่ Restart ซ้ำอย่างเดียว
+174) Example Investigation
+systemctl status myapp
+journalctl -u myapp -n 100
+
+อาจพบ:
+missing env
+port already in use
+DB connection refused
+
+175) Port Already in Use
+Error:
+EADDRINUSE
+
+หมายถึงมี Process อื่น Listen Port เดิม
+ใช้:
+ss -lntp | grep 3000
+
+หา Process
+176) อย่า Kill Process ทันทีถ้ายังไม่รู้ว่าเป็นอะไร
+อาจเป็น Production Instance ที่กำลังรับ Traffic
+ตรวจ:
+PID
+command
+parent
+service
+
+ก่อน
+177) Service Ownership
+Process ที่ systemd ดูแล ถ้า Kill ตรง ๆ:
+systemd อาจ restart กลับมา
+
+จึงควรจัดการผ่าน:
+systemctl stop service
+
+ถ้าเหมาะ
+178) Logs First
+เวลา Production Error:
+อย่าแก้ Config แบบสุ่ม
+
+ควร:
+read error
+inspect logs
+identify layer
+
+ก่อน
+179) Linux Troubleshooting Mental Model
+What changed?
+↓
+Which layer fails?
+↓
+Is process alive?
+↓
+Is port listening?
+↓
+Can local curl work?
+↓
+Can dependency connect?
+↓
+What do logs say?
+
+180) Example 502 Investigation
+Browser:
+502
+
+Step 1:
+systemctl status nginx
+
+181) Step 2
+ดู Nginx Error Log:
+tail -n 100 /var/log/nginx/error.log
+
+182) Step 3
+ถ้าเห็น:
+connect() failed ... 127.0.0.1:3000
+
+ลอง:
+curl http://127.0.0.1:3000
+
+183) Step 4
+ถ้า Connection Refused:
+ss -lntp | grep 3000
+
+ถ้าไม่มี:
+App ไม่ได้ Listen
+
+184) Step 5
+ดู App Service:
+systemctl status my-next-app
+journalctl -u my-next-app
+
+นี่คือ Layered Troubleshooting
+185) Example Disk Full
+Application Error:
+No space left on device
+
+เช็ก:
+df -h
+
+186) จากนั้น
+du -sh /var/* 2>/dev/null
+
+อาจพบ:
+/var/log = 80GB
+
+187) อย่าลบ Log แบบสุ่ม
+ต้องรู้ว่า:
+service ยังเขียนอยู่ไหม
+logrotate ทำงานไหม
+ไฟล์สำคัญต่อ audit ไหม
+
+ค่อยจัดการ
+188) Deleted File แต่ Disk ยังไม่คืน
+Linux มีกรณี Process ยังถือ File Descriptor ของไฟล์ที่ถูกลบ
+Disk Space ยังถูกใช้อยู่
+ใช้ lsof ช่วยหา deleted-open files ได้
+189) Restart Process อาจคืน Space
+เพราะ File Descriptor ปิด
+แต่ต้องทำอย่างมีแผน
+190) Cron
+Linux มี Cron สำหรับ Scheduled Tasks
+ดู Crontab User:
+crontab -l
+
+แก้:
+crontab -e
+
+191) System-wide Cron
+อาจอยู่:
+/etc/crontab
+/etc/cron.d/
+
+ขึ้นกับระบบ
+192) Environment ของ Cron ต่างจาก Interactive Shell
+นี่เป็น Bug ที่พบบ่อย
+Script รันเองได้:
+./job.sh
+
+แต่ Cron Fail เพราะ:
+PATH ต่าง
+working directory ต่าง
+env ต่าง
+
+193) Cron Script ควรใช้ Absolute Path
+เช่น:
+/usr/bin/php /var/www/app/artisan schedule:run
+
+ดีกว่าพึ่ง PATH โดยไม่รู้
+194) Redirect Cron Logs
+เช่น:
+command >> /var/log/myjob.log 2>&1
+
+จะได้ Debug ได้
+195) Cron Overlap
+ถ้า Job รอบก่อนยังไม่จบ แต่รอบใหม่เริ่ม:
+เกิด concurrent runs
+
+อาจต้องใช้:
+flock
+distributed lock
+application no-overlap mechanism
+
+ตาม Deployment
+196) flock
+ใช้ File Lock ใน Linux เช่น:
+flock -n /tmp/job.lock command
+
+ช่วยกัน Process บน Host เดียว
+แต่ไม่กันหลาย Servers
+197) Local vs Distributed Scope
+จำจาก Topic 5:
+flock
+→ host-level
+
+Redis/DB distributed lock
+→ multi-host
+
+ต้องเลือก Scope ให้ตรง
+198) Timezone
+ดู:
+timedatectl
+
+สำคัญกับ:
+cron
+logs
+certificates
+scheduled jobs
+
+199) Time Sync
+ควรให้ Server Sync Clock ผ่าน NTP/service ที่เหมาะ
+Clock เพี้ยนทำให้ Debug Logs/Token/Certificate ยาก
+200) Linux Server Checklist พื้นฐาน
+เมื่อเข้าเครื่อง Production ควรรู้วิธีตอบอย่างน้อย:
+ฉัน login เป็น user อะไร?
+อยู่ directory ไหน?
+เครื่องนี้คือ host ไหน?
+service ไหนรัน?
+process ไหนกิน CPU/RAM?
+disk เต็มไหม?
+port ไหน listen?
+logs อยู่ไหน?
+
+201) Commands ชุดจำเป็น
+whoami
+pwd
+ls -la
+cd
+cat
+less
+tail -f
+grep
+ps aux
+top
+free -h
+df -h
+du -sh
+ss -lntp
+curl
+systemctl
+journalctl
+
+ถ้าใช้ได้คล่อง จะ Troubleshoot Server ได้เยอะมากแล้ว
+202) อย่าจำ Command อย่างเดียว
+สำคัญกว่าคือรู้ว่า Command ตอบคำถามอะไร
+เช่น:
+เว็บ 502
+
+ไม่ใช่เปิด top แบบสุ่ม
+แต่ถาม:
+upstream alive ไหม?
+port listen ไหม?
+
+แล้วใช้ curl, ss, systemctl, journalctl
+203) Linux Admin Mental Model
+Filesystem
+→ ไฟล์อยู่ไหน
+
+Permission
+→ ใครแตะได้
+
+Process
+→ อะไรกำลังรัน
+
+Service
+→ ใครดูแล process
+
+Network
+→ ใครฟัง port ไหน
+
+Resources
+→ เครื่องเหลือ capacity ไหม
+
+Logs
+→ เกิดอะไรขึ้น
+
+204) Production Safety Rule
+ก่อน Command ที่เปลี่ยน State เช่น:
+rm
+kill
+chmod
+chown
+restart
+apt upgrade
+
+ต้องรู้ก่อนว่า:
+จะเปลี่ยนอะไร
+กระทบใคร
+rollback ยังไง
+
+205) Read-only Commands First
+เวลา Incident เริ่มจาก Commands ที่ไม่เปลี่ยน State เช่น:
+pwd
+ls
+ps
+top
+df
+ss
+curl
+journalctl
+
+ก่อน
+แล้วค่อย Action
+206) Developer กับ Root Cause
+Server Restart แล้วหาย ไม่ได้แปลว่าแก้แล้ว
+อาจแค่ reset:
+memory leak
+stuck connection
+bad state
+
+ต้องหาสาเหตุด้วย
+207) Temporary Mitigation vs Permanent Fix
+ตัวอย่าง:
+restart app
+
+อาจเป็น Mitigation
+แต่ Permanent Fix อาจเป็น:
+fix memory leak
+fix timeout
+fix connection pool
+
+ต้องแยกสองอย่าง
+208) Linux เป็นพื้นฐานของ DevOps บทต่อ ๆ ไป
+หลังจากนี้เราจะใช้ Concepts เหล่านี้กับ:
+Nginx
+Node
+PHP-FPM
+Supervisor
+Docker
+CI/CD
+Monitoring
+
+ทั้งหมดรันบนพื้นฐาน Process/File/Network/Permission แบบที่เรียนวันนี้
+สรุป 6.2
+ถ้ามอง Linux Server ให้เป็นภาพง่าย ๆ:
+Filesystem
++
+Users/Permissions
++
+Processes/Services
++
+CPU/RAM/Disk
++
+Network/Ports
++
+Logs
+
+Developer ที่ดู Production ควรสามารถไล่ตอบได้ว่า:
+Process ยังอยู่ไหม?
+Service healthy ไหม?
+Port เปิดไหม?
+Disk/RAM/CPU มีปัญหาไหม?
+Permission ถูกไหม?
+Log บอกอะไร?
+
+หลักสำคัญที่สุดของบทนี้คือ:
+เวลา Production มีปัญหา อย่าเริ่มจากการ Restart หรือแก้ Config แบบสุ่ม แต่ให้ระบุ Layer ก่อน แล้วใช้ Linux tools ตรวจ State ของระบบอย่างเป็นขั้นตอน
+
+และอีกข้อที่ควรจำ:
+บน Server ควรเริ่มจาก Read-only Investigation ก่อน แล้วค่อยใช้คำสั่งที่เปลี่ยน State เมื่อรู้ผลกระทบชัดเจน
+
+
+6.3 Linux Users, Permissions, SSH & Server Security Basics แบบลงลึก
+บทนี้จะลงลึกเรื่อง “ใครมีสิทธิ์ทำอะไรบน Server” ตั้งแต่ root, sudo, User/Group, SSH Key, authorized_keys, File Permission, Service User, Firewall เบื้องต้น และหลัก Least Privilege ที่สำคัญมากกับ Production
+Mental Model:
+Authentication
+→ คุณคือใคร
+
+Authorization
+→ คุณทำอะไรได้
+
+Linux Permission
+→ แตะไฟล์/โปรเซสอะไรได้
+
+Network Access
+→ เข้า port ไหนได้
+
+1) Linux เป็น Multi-user System
+Linux ถูกออกแบบให้หลาย User ใช้เครื่องเดียวกันได้
+เช่น:
+root
+deploy
+ubuntu
+www-data
+mysql
+redis
+
+แต่ละ User มีสิทธิ์ต่างกัน
+2) User ไม่ได้หมายถึง “คน” เสมอไป
+มีทั้ง:
+Human user
+→ deploy, admin, developer
+
+Service user
+→ www-data, mysql, redis
+
+Service User ใช้เพื่อจำกัดสิทธิ์ของ Program
+3) ทำไมไม่รันทุกอย่างเป็น root
+ถ้า Node/Laravel ถูกเจาะและ Process รันเป็น root
+Attacker อาจได้สิทธิ์:
+อ่านทุกไฟล์
+แก้ system config
+ติดตั้ง malware
+สร้าง user
+เปิด firewall
+ขโมย secrets
+
+Impact สูงมาก
+4) Principle: Least Privilege
+Least Privilege หมายถึง:
+ให้แต่ละ User/Process มีสิทธิ์เท่าที่จำเป็นต่อหน้าที่
+
+เช่น Web App ต้องอ่าน Code และเขียนแค่:
+storage/
+cache/
+uploads/
+
+ไม่จำเป็นต้องแก้:
+/etc/ssh
+/etc/passwd
+
+5) Root User
+root มี UID:
+0
+
+มีสิทธิ์สูงสุดในระบบ
+ตรวจ User:
+id root
+
+6) Root ใช้ทำอะไร
+เช่น:
+ติดตั้ง package
+แก้ system config
+สร้าง user
+ตั้ง firewall
+จัดการ service
+
+แต่ไม่ควรใช้เป็น Daily Working Account ถ้าไม่จำเป็น
+7) Recommended Pattern
+แทน:
+login root
+ทำทุกอย่าง
+
+ใช้:
+login deploy/admin
+↓
+sudo เฉพาะ command ที่ต้อง elevated
+
+8) sudo
+sudo = Run Command ด้วย Privilege ของ User อื่น โดยทั่วไปคือ root
+เช่น:
+sudo systemctl restart nginx
+
+9) sudo ไม่ได้ทำให้ Shell ทั้งหมดเป็น root โดยอัตโนมัติ
+คำสั่งนี้:
+sudo nano /etc/nginx/nginx.conf
+
+เฉพาะ nano ตัวนั้นได้สิทธิ์ root
+หลังออก:
+whoami
+
+ยังเป็น User เดิม
+10) Root Shell
+สามารถ:
+sudo -i
+
+เข้า Root Shell ได้
+แต่ควรใช้เฉพาะเมื่อจำเป็น
+เพราะทุกคำสั่งหลังจากนั้นมีสิทธิ์สูง
+11) User Database
+ข้อมูล User อยู่โดยหลักใน:
+/etc/passwd
+
+ดู:
+cat /etc/passwd
+
+12) /etc/passwd ไม่ได้เก็บ Password จริง
+ปัจจุบัน Password Hash อยู่:
+/etc/shadow
+
+ซึ่ง User ทั่วไปอ่านไม่ได้
+13) Entry ใน /etc/passwd
+หน้าตาประมาณ:
+deploy:x:1001:1001::/home/deploy:/bin/bash
+
+หมายถึง:
+username
+UID
+GID
+home directory
+login shell
+
+14) UID
+UID = User ID
+Linux ใช้เลขนี้จริง ๆ ในการระบุ Owner
+ไม่ใช่ Username อย่างเดียว
+15) Group
+Group ช่วยจัด Permission หลาย User
+เช่น:
+deploy
+developers
+www-data
+sudo
+
+16) ดู Groups
+groups
+
+หรือ:
+id
+
+17) Group Database
+อยู่ที่:
+/etc/group
+
+18) สร้าง User
+เช่น Ubuntu:
+sudo adduser deploy
+
+หรือบางระบบใช้:
+sudo useradd ...
+
+adduser มัก interactive และใช้ง่ายกว่าใน Debian/Ubuntu
+19) เพิ่ม User เข้า Group
+เช่น:
+sudo usermod -aG sudo deploy
+
+สำคัญมากคือ -aG
+เพราะ -a = append
+20) ระวัง usermod -G
+ถ้าใช้ผิด:
+sudo usermod -G sudo deploy
+
+อาจแทนที่ Supplementary Groups เดิม
+จึงมักใช้:
+-aG
+
+21) Service Account
+เช่น Web Runtime อาจรันเป็น:
+www-data
+
+ตรวจ:
+ps aux | grep nginx
+
+หรือ PHP-FPM Config
+22) ทำไม Service User สำคัญ
+สมมติ PHP-FPM ถูกโจมตี
+ถ้ารันเป็น www-data
+Attacker ได้สิทธิ์ตาม www-data
+ไม่ใช่ทั้งเครื่อง
+นี่คือ Damage Containment
+23) Human User กับ Service User ควรแยก
+ไม่ควรให้ Web App รันเป็น User deploy ที่มี sudo
+เพราะ Compromise App อาจกลายเป็น Privilege Escalation
+24) File Ownership
+ไฟล์มี:
+owner
+group
+permissions
+
+เช่น:
+ls -l
+
+อาจเห็น:
+-rw-r----- 1 deploy www-data 2048 .env
+
+25) Permission Model
+แบ่งเป็น:
+owner
+group
+others
+
+แต่ละชุดมี:
+r = read
+w = write
+x = execute
+
+26) Example
+-rwxr-x---
+
+แยก:
+owner = rwx
+group = r-x
+others = ---
+
+27) Numeric Mode
+r = 4
+w = 2
+x = 1
+
+ตัวอย่าง:
+7 = 4+2+1 = rwx
+6 = 4+2   = rw-
+5 = 4+1   = r-x
+4 = 4     = r--
+
+28) Common Permissions
+644
+→ file ทั่วไป
+
+755
+→ executable/directory
+
+600
+→ sensitive file
+
+700
+→ private directory/script
+
+ไม่ใช่กฎตายตัว แต่พบบ่อย
+29) Directory Permission ต่างจาก File
+สำหรับ Directory:
+r
+→ list names
+
+w
+→ create/delete entries
+
+x
+→ traverse/access entries
+
+x สำคัญมาก
+30) Directory ไม่มี x
+แม้รู้ชื่อไฟล์ข้างในก็อาจเข้าไม่ได้
+เช่น:
+drw-r-----
+
+ไม่มี execute/traverse
+31) chmod
+เปลี่ยน Permission:
+chmod 640 .env
+
+32) Symbolic chmod
+เช่น:
+chmod u+x deploy.sh
+
+หมายถึง:
+user/owner + execute
+
+33) ตัวอย่างอื่น
+chmod g+w storage
+
+เพิ่ม write ให้ Group
+34) chown
+เปลี่ยน Owner:
+sudo chown deploy app.js
+
+35) เปลี่ยน Owner + Group
+sudo chown deploy:www-data app.js
+
+36) Recursive
+sudo chown -R deploy:www-data /var/www/app
+
+ต้องระวังมาก เพราะกระทบทั้ง Tree
+37) Production App Ownership Pattern
+ตัวอย่างหนึ่ง:
+source code:
+owner = deploy
+group = www-data
+
+runtime writable dirs:
+group writable by www-data
+
+เช่น:
+/var/www/app
+├── code
+├── storage
+└── cache
+
+38) Web Runtime ไม่ควรเขียน Source Code ถ้าไม่จำเป็น
+ถ้า www-data เขียน PHP/JS Source ได้ทั้งหมด
+RCE บางแบบอาจเขียน Backdoor ลง Code ได้ง่ายขึ้น
+ดังนั้น:
+source → read-only สำหรับ runtime
+runtime dirs → writable
+
+ดีกว่า
+39) Laravel Example
+มักต้องให้ PHP-FPM เขียน:
+storage/
+bootstrap/cache/
+
+แต่ไม่จำเป็นต้องเขียน:
+app/
+routes/
+vendor/
+
+40) chmod 777 Anti-pattern
+Developer มักแก้:
+Permission denied
+
+ด้วย:
+chmod -R 777 .
+
+นี่ไม่ใช่ Fix ที่ดี
+41) ทำไม 777 อันตราย
+หมายถึง:
+owner
+group
+others
+
+ทุกคน:
+read
+write
+execute
+
+Process/User ที่ไม่เกี่ยวก็แก้ File ได้
+42) วิธีคิดที่ถูก
+ถามว่า:
+ใครต้องเขียน?
+ใครต้องอ่าน?
+group ไหนควรเข้าถึง?
+
+แล้วตั้ง Ownership/Permission ตามนั้น
+43) umask
+กำหนด Default Permissions ตอนสร้าง File ใหม่
+เช่น:
+umask
+
+อาจเห็น:
+0022
+
+44) Concept
+File base permission โดยทั่วไปเริ่มจาก:
+666
+
+Directory:
+777
+
+แล้วหักด้วย umask
+45) Example 022
+File:
+666 - 022
+→ 644
+
+Directory:
+777 - 022
+→ 755
+
+ในเชิง conceptual bit mask
+46) Shared Deployment Group
+ถ้ามีหลาย Developer ที่ Deploy
+อาจสร้าง Group:
+webdeploy
+
+แล้วให้:
+alice
+bob
+deploy
+
+อยู่ Group เดียวกัน
+เพื่อจัด Permission แบบกลุ่ม
+47) Setgid Directory
+Advanced แต่มีประโยชน์
+ถ้า Directory ตั้ง Setgid:
+chmod g+s shared-dir
+
+Files ใหม่มักสืบทอด Group ของ Directory
+ช่วย Shared Deployment Directory
+48) Permission ละเอียดกว่านี้มี ACL
+ACL = Access Control List
+ใช้กำหนดสิทธิ์เฉพาะ User เพิ่มเติมโดยไม่ต้องเปลี่ยน Owner/Group หลัก
+เช่น Tool:
+setfacl
+getfacl
+
+แต่พื้นฐาน Owner/Group มักพอก่อน
+49) SSH คืออะไร
+SSH = Secure Shell
+ใช้ Login/Execute Command บน Remote Server แบบเข้ารหัส
+เช่น:
+ssh deploy@example.com
+
+50) SSH Default Port
+โดยทั่วไป:
+22
+
+แต่เปลี่ยนได้
+51) SSH Flow
+Laptop
+↓ encrypted connection
+SSH Server (sshd)
+↓
+Linux shell
+
+52) sshd
+Server-side SSH daemon
+เช็ก:
+systemctl status ssh
+
+ชื่อ Service อาจต่างตาม Distribution
+53) Password Authentication
+สามารถ Login ด้วย:
+username + password
+
+แต่ Production มักนิยม SSH Key มากกว่า
+54) SSH Key Pair
+ประกอบด้วย:
+Private Key
+Public Key
+
+Private Key อยู่กับ Client
+Public Key อยู่ Server
+55) Mental Model
+Laptop
+private key
+
+Server
+public key
+
+Server ตรวจว่าผู้เชื่อมต่อมี Private Key ที่ตรงกับ Public Key หรือไม่
+56) Generate Key
+ตัวอย่าง:
+ssh-keygen -t ed25519
+
+จะได้ประมาณ:
+~/.ssh/id_ed25519
+~/.ssh/id_ed25519.pub
+
+57) Private Key
+id_ed25519
+
+ต้องเก็บเป็นความลับ
+ห้าม:
+ส่ง Slack
+commit Git
+upload repo
+paste public chat
+
+58) Public Key
+id_ed25519.pub
+
+สามารถนำไปวาง Server ได้
+ไม่ใช่ Secret แบบ Private Key
+59) authorized_keys
+Server เก็บ Public Keys ที่อนุญาต Login ไว้:
+~/.ssh/authorized_keys
+
+60) Flow
+Client private key
+↓
+SSH authentication
+↓
+Server checks authorized_keys
+
+61) Permission ของ .ssh
+มักควรเข้ม
+เช่น:
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/authorized_keys
+
+ไม่เช่นนั้น SSH อาจปฏิเสธด้วยเหตุผลด้าน Security
+62) Copy Public Key
+สามารถใช้:
+ssh-copy-id deploy@server
+
+ถ้าระบบรองรับ
+หรือเพิ่ม Public Key ด้วยวิธีอื่นที่ปลอดภัย
+63) SSH Config ฝั่ง Client
+ไฟล์:
+~/.ssh/config
+
+ตัวอย่าง:
+Host prod-web
+    HostName 203.0.113.10
+    User deploy
+    IdentityFile ~/.ssh/prod_ed25519
+
+จากนั้น:
+ssh prod-web
+
+64) ประโยชน์ SSH Config
+ไม่ต้องจำ:
+IP
+username
+port
+key path
+
+ทุกครั้ง
+65) Host Key
+ครั้งแรกที่ Connect Server จะเห็น Fingerprint
+เช่น:
+The authenticity of host ... can't be established
+
+นี่ใช้ตรวจ Identity ของ Server
+66) known_hosts
+Client เก็บ Host Keys ที่เคยเชื่อมต่อใน:
+~/.ssh/known_hosts
+
+67) Host Key Changed
+ถ้า Server Key เปลี่ยน อาจขึ้น Warning
+อาจเกิดจาก:
+server rebuild
+IP reused
+หรือ MITM attack
+
+ไม่ควรลบ Warning แบบ Blindly โดยไม่รู้สาเหตุ
+68) MITM
+MITM = Man-in-the-Middle
+Attacker อยู่กลาง Connection พยายามปลอมเป็น Server
+Host Key Verification ช่วยลดความเสี่ยง
+69) SSH Password vs Key
+Key-based Authentication โดยทั่วไปแข็งแรงกว่า Password ที่เดาง่าย
+โดยเฉพาะเมื่อ:
+private key protected
+passphrase
+proper key management
+
+70) SSH Key Passphrase
+Private Key สามารถตั้ง Passphrase ได้
+ถ้า File Private Key ถูกขโมย ยังมีชั้นป้องกันเพิ่ม
+71) ssh-agent
+ช่วยเก็บ Decrypted Key ใน Session หลัง Unlock ครั้งหนึ่ง
+ไม่ต้องพิมพ์ Passphrase ทุก Connection
+72) Production Best Practice
+มัก:
+key-based SSH
+disable root direct login
+disable password login
+
+หลังมั่นใจว่า Key Login ทำงานถูกต้อง
+73) สำคัญมากก่อนปิด Password Login
+ต้องเปิด Terminal ใหม่และทดสอบ:
+ssh deploy@server
+
+ว่า Key ใช้ได้จริง
+ไม่งั้นอาจ Lock ตัวเองออกจาก Server
+74) SSH Config Server
+ไฟล์หลักโดยทั่วไป:
+/etc/ssh/sshd_config
+
+หรือมี Include Directory
+75) Option สำคัญ
+เช่น:
+PermitRootLogin
+PasswordAuthentication
+PubkeyAuthentication
+
+แต่ชื่อ/Default อาจต่างตาม Distribution/Version
+76) หลังแก้ SSH Config
+ควรตรวจ Syntax ก่อน Restart/Reload ถ้า Tool รองรับ
+แนวคิดคือ:
+validate config
+↓
+keep existing session open
+↓
+reload
+↓
+test new connection
+
+อย่าปิด Session เดิมทันที
+77) ทำไมต้องเก็บ SSH Session เดิมไว้
+ถ้า Config ใหม่ผิด:
+new connections fail
+
+Session เดิมอาจช่วยย้อนกลับแก้ Config ได้
+78) Root SSH Login
+แนวทางทั่วไปคือไม่ให้ Login root โดยตรง
+ใช้:
+deploy/admin user
+↓
+sudo
+
+ช่วย Audit และลด Exposure
+79) Shared Account Anti-pattern
+เช่นทุกคน Login:
+ssh developer@prod
+
+ใช้ User เดียวกัน
+ปัญหา:
+ไม่รู้ใครทำอะไร
+offboarding ยาก
+key management ยาก
+
+80) Better Pattern
+alice
+bob
+charlie
+
+แต่ละคนมี Account/Key ตัวเอง
+สิทธิ์ผ่าน Groups/Sudo Policy
+81) Offboarding
+เมื่อคนออกจากทีม:
+disable account
+remove public key
+
+ไม่ต้องเปลี่ยน Shared Password/Key ทั้งทีม
+82) sudoers
+สิทธิ์ sudo ถูกกำหนดผ่าน:
+/etc/sudoers
+/etc/sudoers.d/
+
+ไม่ควรแก้ด้วย Text Editor แบบสุ่ม
+83) ใช้ visudo
+เช่น:
+sudo visudo
+
+ช่วย Validate Syntax ลดโอกาสทำ sudo พัง
+84) Limited sudo
+ไม่จำเป็นต้องให้:
+ALL=(ALL) ALL
+
+เสมอไป
+บาง Service Account อาจอนุญาตแค่:
+restart myapp
+read logs
+
+ตาม Requirement
+85) Separation of Duties
+บางองค์กรแยก:
+developer
+deployment system
+DB admin
+security admin
+
+ลดคนที่มีสิทธิ์ทุกอย่าง
+86) SSH Access ไม่เท่ากับ App Access
+คนที่ Login Server ได้อาจมี Access มากกว่า User App มาก
+จึงต้องจัดการ SSH เป็น Privileged Access
+87) File Secrets
+เช่น:
+.env
+private keys
+TLS keys
+credentials
+
+ต้อง Permission เข้ม
+88) .env
+ไม่ควร:
+chmod 644
+
+ถ้า Users อื่นบนเครื่องไม่ควรอ่าน
+อาจใช้:
+640
+600
+
+ขึ้นกับ Runtime User/Group
+89) Example
+ถ้า Owner:
+deploy:www-data
+
+และ PHP-FPM ต้องอ่าน .env
+อาจใช้:
+640
+
+หมายถึง:
+deploy = read/write
+www-data group = read
+others = none
+
+90) แต่ Secret Management ที่ดีกว่า
+Production ที่โตขึ้นอาจใช้:
+Vault
+AWS Secrets Manager
+GCP Secret Manager
+Azure Key Vault
+Kubernetes Secrets + encryption controls
+
+แทน File Secret ธรรมดา
+91) Environment Variable ก็ไม่ใช่ Magic Security
+Process ที่มีสิทธิ์ตรวจ Environment อาจเห็น Secret ได้
+จึงต้องจำกัด OS Permissions อยู่ดี
+92) Firewall คืออะไร
+Firewall กำหนด Network Traffic ที่อนุญาต
+Concept:
+source
+destination
+port
+protocol
+→ allow/deny
+
+93) Ubuntu มักใช้ UFW
+UFW = Uncomplicated Firewall
+เป็น Frontend ที่ใช้ง่ายสำหรับ Firewall Rules
+94) ดู Status
+sudo ufw status
+
+95) ก่อน Enable Firewall
+ต้องอนุญาต SSH ก่อน
+เช่น:
+sudo ufw allow OpenSSH
+
+หรือ Port จริงที่ใช้
+ไม่งั้นอาจ Lock SSH ตัวเองออก
+96) เปิด HTTP/HTTPS
+เช่น:
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+
+หรือ Application Profile ตาม Distribution
+97) จากนั้นค่อย Enable
+sudo ufw enable
+
+แต่ Production ต้องตรวจ Architecture ก่อน โดยเฉพาะ Cloud Firewall/Security Group ที่มีอีกชั้น
+98) Defense in Depth
+อาจมีหลาย Firewall Layer:
+Cloud Security Group
+↓
+Network ACL
+↓
+Host Firewall
+↓
+Application authorization
+
+แต่ละ Layer มีหน้าที่
+99) DB Port
+สมมติ MySQL:
+3306
+
+ถ้า App กับ DB อยู่ Private Network
+ควรอนุญาตเฉพาะ App Network/Hosts
+ไม่ใช่:
+0.0.0.0/0 → 3306
+
+100) Redis
+Port ทั่วไป:
+6379
+
+ยิ่งไม่ควร Public หากไม่มีเหตุผลและ Security ที่เหมาะสม
+101) Public Surface Area
+ยิ่งเปิด Port สู่ Internet เยอะ:
+attack surface
+
+ยิ่งใหญ่
+Production Web Server มักต้อง Public แค่:
+80
+443
+
+และ SSH จำกัด Source เท่าที่ทำได้
+102) SSH จำกัด IP
+ถ้ามี Office/VPN Static IP อาจจำกัดว่า:
+22
+รับเฉพาะ admin network
+
+ลด Brute-force Surface
+103) VPN / Bastion
+ระบบใหญ่ขึ้นอาจไม่เปิด SSH ทุก Server ตรง Internet
+ใช้:
+VPN
+Bastion Host
+Session Manager
+Zero-trust access
+
+แทน
+104) Bastion Host
+Architecture:
+Admin Laptop
+↓
+Bastion
+↓
+Private App Server
+
+App Server ไม่มี Public SSH
+105) Benefit
+ลดจำนวน Machines ที่ expose SSH ต่อ Internet
+และ Centralize Access/Audit ได้ดีขึ้น
+106) Brute Force
+Bot บน Internet สแกน Port 22 และลอง:
+root
+admin
+ubuntu
+password123
+
+ตลอดเวลาเป็นเรื่องปกติของ Public Internet
+107) Protection
+เช่น:
+SSH keys
+disable password login
+disable root login
+firewall restrictions
+fail2ban
+MFA/access gateway
+
+ตาม Scale
+108) Fail2ban Concept
+อ่าน Logs แล้ว Block IP ที่ Login Fail ซ้ำ ๆ ชั่วคราว
+ช่วยลด Automated Brute-force
+แต่ไม่แทน Key Authentication/Firewall
+109) เปลี่ยน SSH Port ช่วยไหม
+เปลี่ยน:
+22 → 4022
+
+อาจลด Noise จาก Bots
+แต่ไม่ใช่ Security Boundary หลัก
+Attacker ยัง Scan Port ได้
+110) Security by Obscurity
+การซ่อน Port/Path อย่างเดียวไม่ใช่ Security ที่แข็งแรง
+ควรมี:
+authentication
+authorization
+network restriction
+patching
+
+จริง ๆ
+111) Service Binding
+ถ้า Node.js ใช้เฉพาะ Nginx เครื่องเดียวกัน
+ดีกว่า Listen:
+127.0.0.1:3000
+
+แทน:
+0.0.0.0:3000
+
+ถ้าไม่จำเป็นต้องรับจากภายนอก
+112) Bind 0.0.0.0
+หมายถึง Listen ทุก Network Interface
+ไม่ได้หมายความว่า Internet เข้าได้แน่นอน เพราะ Firewall ยังมีผล
+แต่ Exposure Potential เพิ่ม
+113) Private Service
+เช่น Database อาจ Bind Private IP:
+10.0.1.10:3306
+
+เฉพาะ Internal Network
+114) Check Listening Ports
+sudo ss -lntp
+
+ควรตรวจเป็นระยะว่า:
+มีอะไรเปิดอยู่บ้าง?
+
+115) Unknown Listening Service
+ถ้าเห็น Port ไม่รู้จัก:
+0.0.0.0:12345
+
+ควรตรวจ:
+process ไหน?
+package อะไร?
+จำเป็นไหม?
+
+116) Attack Surface Reduction
+หลักง่าย ๆ:
+ไม่ใช้ → ปิด
+ไม่จำเป็น Public → bind private
+ไม่จำเป็น privilege → ลด privilege
+
+117) Service User Example: Nginx
+Nginx Master อาจเริ่มด้วย Elevated Privilege เพื่อ bind Port 80/443
+แต่ Worker Processes รันเป็น User สิทธิ์ต่ำ เช่น:
+www-data
+
+นี่เป็น Privilege Separation
+118) Privileged Port
+Traditional Unix Ports:
+< 1024
+
+ต้องการ Privilege พิเศษในหลาย Environment
+Nginx Master จึงอาจมี Privilege เพื่อ bind 80/443
+119) Worker ไม่ควรเป็น root
+เพราะ Worker เป็นตัวที่ Process Requests จาก Internet
+ถ้า exploit เกิด Impact จะลดลงเมื่อ Worker สิทธิ์ต่ำ
+120) PHP-FPM User
+Pool Config อาจมี:
+user = www-data
+group = www-data
+
+แยกจาก root
+121) Node.js Service User
+สร้าง User เฉพาะได้ เช่น:
+myapp
+
+แล้ว systemd:
+User=myapp
+Group=myapp
+
+122) Benefit
+Node Process จะอ่าน/เขียนได้เฉพาะสิ่งที่ myapp มี Permission
+ลด Impact จาก RCE
+123) Application Directory
+ตัวอย่าง:
+/var/www/myapp
+
+อาจ:
+owner = deploy
+group = myapp
+
+App Runtime อ่านได้ แต่ Deploy User เป็นคนแก้ Code
+124) Writable Directory
+เช่น:
+/var/www/myapp/storage
+
+ให้ Runtime User เขียนได้
+เฉพาะ Directory นี้
+125) Principle
+“Code should be executable/readable by the runtime, but not universally writable.”
+
+เป็นแนวคิด Security ที่ดี
+126) Temp Directory Security
+อย่าเก็บ Sensitive File ใน /tmp แบบชื่อเดาง่ายโดยไม่คิด Permission
+เพราะเป็น Shared Area ในหลายระบบ
+127) Symlink Attack Concept
+ถ้า Privileged Script เขียน File Path ใน Shared Directory แบบไม่ปลอดภัย
+Attacker อาจใช้ Symlink หลอกให้เขียนทับ File อื่น
+นี่เป็นเหตุผลให้ใช้ Secure Temp APIs/Permissions
+128) File Upload Security
+Upload Directory ไม่ควรให้ Execute Script ได้ถ้าไม่จำเป็น
+เช่น Upload PHP File แล้ว Web Server Execute ได้ = อันตรายมาก
+129) Separate Upload Storage
+ดีไซน์ที่ดี:
+uploads
+→ object storage
+หรือ
+→ directory ที่ไม่ execute code
+
+130) Ownership ของ Log
+Application ต้องเขียน Log
+แต่ไม่ควรแก้ System Logs ของ Service อื่น
+แยก Directory/Permissions
+131) Log Confidentiality
+Logs อาจมี:
+email
+IP
+token บางส่วน
+business data
+
+ไม่ควรเปิด read ให้ทุก User โดยอัตโนมัติ
+132) Sudo Audit
+หลายระบบบันทึกการใช้ sudo
+ช่วยตอบว่า:
+ใคร restart service?
+ใครแก้ config?
+
+ดีกว่า Shared root account
+133) Principle of Accountability
+Security ไม่ใช่แค่ “กันคนร้าย”
+ยังรวมถึง:
+รู้ว่าใครทำอะไร
+ย้อนตรวจได้
+
+เรียกว่า Auditability
+134) Shared Private Key Anti-pattern
+ไม่ควรให้ Team ทั้งหมดใช้:
+prod.pem
+
+ไฟล์เดียวแล้วส่งต่อกัน
+Offboarding/Audit ยากมาก
+135) Better
+แต่ละคนมี Public Key ของตัวเองใน Server
+เช่น:
+Alice key
+Bob key
+Charlie key
+
+136) Key Rotation
+ควรสามารถ:
+เพิ่ม key ใหม่
+ทดสอบ
+ลบ key เก่า
+
+โดยไม่กระทบทุกคน
+137) Lost Laptop
+ถ้า Laptop หาย:
+revoke/remove public key
+
+จาก Server/Access System
+ไม่ต้อง rebuild ทั้ง Server
+138) CI/CD Deployment Key
+Automation ก็ต้องมี Identity แยก
+เช่น:
+GitHub Actions deploy key
+CI service account
+
+ไม่ควรใช้ Personal Key ของ Developer
+139) Service Account for CI
+ให้สิทธิ์เฉพาะ:
+upload artifact
+switch release
+restart specific service
+
+แทน Full root ถ้าไม่จำเป็น
+140) Principle: Human and Machine Identity Separate
+human account
+machine/service account
+
+ควรแยก
+ช่วย Audit และ Rotate Credentials
+141) SSH Agent Forwarding
+มี Feature ส่ง Agent ไป Remote Host
+สะดวก แต่มี Security Risks ถ้า Remote Host ถูก compromise
+ไม่ควรเปิดโดยไม่เข้าใจ
+142) Private Key ไม่ควรถูก Copy ไป Server
+Laptop Key:
+private key
+
+ควรอยู่ที่ Client
+Serverต้องการแค่ Public Key
+143) Git Private Repository บน Server
+ไม่ควร Copy Personal SSH Private Key ไป Production เพื่อ git pull
+ควรใช้:
+deploy key
+machine identity
+artifact-based deployment
+
+ดีกว่า
+144) Artifact Deployment
+Security ดีขึ้นเพราะ Production ไม่จำเป็นต้องมี Git Credential สิทธิ์กว้าง
+CI Build:
+source
+↓
+artifact
+↓
+server
+
+145) Production Source Editing
+ไม่ควร:
+ssh prod
+nano production code
+
+เป็น Workflow ปกติ
+เพราะ:
+ไม่อยู่ใน version control
+audit ยาก
+rollback ยาก
+หลาย servers ไม่ sync
+
+146) Emergency Hotfix
+ถ้าจำเป็นจริง ต้อง:
+record change
+apply proper source fix
+redeploy
+
+ภายหลัง
+ไม่ปล่อย Snowflake Server ถาวร
+147) Snowflake Server
+หมายถึง Server ที่ Config/Code แตกต่างเพราะแก้มือสะสม
+ทำให้ Recreate ยากมาก
+DevOps ที่ดีพยายามลดสิ่งนี้
+148) Patch Management
+Security ไม่จบที่ Permission
+ต้องอัปเดต:
+OS packages
+OpenSSL
+Nginx
+PHP
+Node
+libraries
+
+เมื่อมี Security Fix ที่เกี่ยวข้อง
+149) แต่ Auto Upgrade ทุกอย่างทันทีอาจเสี่ยง
+Production ต้อง Balance:
+patch urgency
+compatibility testing
+maintenance
+rollback
+
+150) CVE
+CVE = Common Vulnerabilities and Exposures
+เป็น Identifier ของช่องโหว่สาธารณะ เช่น:
+CVE-YYYY-NNNN
+
+Developer/DevOps ควรรู้ Concept เพื่อประเมิน Patch
+151) Secrets ใน Shell History
+ถ้าพิมพ์:
+curl -H "Authorization: Bearer SECRET..."
+
+อาจถูกเก็บใน Shell History
+ต้องระวัง
+152) Secrets ใน Process List
+ถ้าส่ง Secret เป็น Command-line Argument
+บางระบบ User อื่นอาจเห็นผ่าน:
+ps aux
+
+จึงควรใช้ Secret Files/Environment/STDIN ตาม Tool ที่รองรับ
+153) Environment Exposure
+Environment ก็ไม่ perfect
+Privileged User/Process อาจอ่านได้
+หลักคือ:
+restrict who can access the host/process
+
+154) .env Git Ignore
+Production Secrets ไม่ควร Commit ลง Repository
+เช็ก:
+.env
+*.pem
+private keys
+credentials
+
+ใน .gitignore และ Secret Scanning
+155) Secret Rotation
+ต้องเตรียมวิธีเปลี่ยน:
+DB password
+API key
+SSH key
+JWT signing key
+
+โดยไม่ต้อง rebuild ระบบแบบวุ่นวาย
+156) Key Expiry
+Credential ที่ไม่มีวันหมดอายุและไม่มีการ Rotate เป็น Risk
+โดยเฉพาะ Machine Credentials
+157) Database User
+Application ไม่ควรใช้:
+root DB user
+
+ควรสร้าง App User ที่มีสิทธิ์เฉพาะ Database/Operations ที่จำเป็น
+158) Example
+App ต้อง:
+SELECT
+INSERT
+UPDATE
+DELETE
+
+บน Schema ตัวเอง
+ไม่จำเป็นต้อง:
+CREATE USER
+DROP DATABASE
+SUPER
+
+159) Migration User
+บางระบบแยก:
+runtime DB user
+migration DB user
+
+เพราะ Migration ต้องสิทธิ์ DDL มากกว่า Runtime
+Security แข็งขึ้น
+160) Redis Authentication
+Redis ที่ใช้ Critical State ควรมี:
+private network
+authentication/ACL
+TLS ถ้าจำเป็น
+
+ไม่ควรคิดว่า “อยู่หลัง firewall แล้วพอทุกอย่าง” เสมอไป
+161) Defense in Depth
+ถ้า Firewall Config พลาด แต่ Redis ยังมี Auth/ACL
+ยังมีอีก Layer ป้องกัน
+162) Network ACL ไม่แทน Application Authorization
+แม้ API Internal
+ยังควรตรวจ:
+service identity
+authorization
+
+ถ้า Threat Model ต้องการ
+163) localhost ไม่แปลว่าปลอดภัยทุกกรณี
+ถ้า Attacker ได้ Code Execution บนเครื่อง
+เขาเข้าถึง Services ที่ Bind localhost ได้
+ดังนั้นยังต้องใช้ Least Privilege และ Credential Protection
+164) Security Boundary ต้องชัด
+ตัวอย่าง:
+Internet
+↓
+WAF
+↓
+Nginx
+↓
+App
+↓
+DB
+
+แต่ละ Boundary ควรจำกัดสิทธิ์ลงเรื่อย ๆ
+165) Web Process Compromise Scenario
+สมมติ Attacker RCE ใน PHP
+ถามว่า Attacker ทำอะไรได้?
+ถ้า Permission ดี:
+อ่าน app files
+เขียน runtime dirs
+connect DB ด้วย app credential
+
+แต่ไม่ควร:
+sudo root
+แก้ SSH
+อ่านทุก app secret
+
+นี่คือ Blast Radius Control
+166) Blast Radius
+Blast Radius = ขอบเขตความเสียหายเมื่อ Component ถูกเจาะหรือพัง
+Least Privilege มีเป้าหมายลด Blast Radius
+167) Separate Applications
+ถ้า Server มี App A/B
+อาจใช้ Service Users แยก:
+app-a
+app-b
+
+ไม่ใช้ www-data ร่วมทุกอย่างเสมอไปถ้าต้อง Isolation สูง
+168) Benefit
+App A ถูกเจาะ ไม่ควรอ่าน:
+App B .env
+App B uploads
+
+โดยง่าย
+169) Containers ช่วย Isolation ได้อีกชั้น
+แต่ Container ไม่แทน Security Configuration
+ยังต้องมี:
+non-root user
+filesystem permissions
+network restrictions
+secrets
+
+เรื่องนี้จะเรียนใน Docker
+170) Root inside Container
+การรัน Container Process เป็น root โดยไม่จำเป็นยังไม่ใช่ Best Practice
+แม้ root ใน Container จะมี Namespace Isolation แต่ Risk ยังสูงกว่า non-root
+171) SUID
+Linux มี Permission พิเศษเช่น SUID
+Executable สามารถรันด้วยสิทธิ์ Owner
+มี Security Impact สูง
+ไม่ควรตั้งเองโดยไม่เข้าใจ
+172) World-writable Files
+หาได้ด้วย Tools เช่น find
+Concept คือ File ที่ Others เขียนได้อาจเป็น Risk
+โดยเฉพาะ Config/Script ที่ Privileged Process Execute
+173) Cron Security
+ถ้า root cron รัน:
+/opt/scripts/job.sh
+
+แต่ job.sh ทุกคนเขียนได้
+User ธรรมดาแก้ Script แล้วได้ Code Execution เป็น root
+อันตรายมาก
+174) Principle
+Privileged Process ห้าม execute config/script ที่ Low-privilege User แก้ได้โดยไม่ตั้งใจ
+
+175) Cron File Permissions
+Script ที่ root execute ควร Owner/Permissions ชัด
+เช่น:
+root:root
+755 หรือเข้มกว่า
+
+ขึ้นกับ Requirement
+176) PATH Injection
+Privileged Script ใช้:
+curl
+
+โดยไม่รู้ PATH ที่เชื่อถือได้
+ถ้า Attacker ควบคุม PATH อาจให้ Script รัน Binary ปลอม
+ใน Privileged Script ควรควบคุม Environment ให้ชัด
+177) Use Absolute Paths in Sensitive Automation
+เช่น:
+/usr/bin/curl
+/usr/bin/php
+
+ช่วยลด Ambiguity บางส่วน
+178) File Ownership Check
+เวลาสงสัย:
+stat filename
+
+ดู:
+owner
+group
+permissions
+timestamps
+
+ละเอียดกว่า ls -l
+179) Directory Chain Permissions
+ถ้า File Permission ถูกแต่ App ยังอ่านไม่ได้
+ต้องตรวจ Parent Directories ด้วย
+เช่น:
+/var
+/var/www
+/var/www/app
+
+ทุก Directory ต้อง Traverse ได้
+180) namei -l
+บาง Linux มี:
+namei -l /var/www/app/.env
+
+ช่วยดู Permissions ทุก Path Component
+มีประโยชน์มากเวลา Debug Permission Denied
+181) SSH Login Troubleshooting
+ถ้า Key Login ไม่ได้ ตรวจ:
+username ถูกไหม
+public key อยู่ authorized_keys ไหม
+permissions ถูกไหม
+sshd config อนุญาตไหม
+server logs บอกอะไร
+
+182) SSH Server Logs
+บน Ubuntu อาจดู:
+journalctl -u ssh
+
+หรือ Auth Logs ตาม Distribution
+ไม่ควรเดาจากฝั่ง Client อย่างเดียว
+183) Verbose SSH Client
+ssh -v deploy@server
+
+ละเอียดขึ้น:
+ssh -vvv deploy@server
+
+ช่วยดูว่า Client ใช้ Key ไหน
+184) Multiple SSH Keys
+Client อาจเสนอ Key ผิดตัวก่อน
+~/.ssh/config ช่วยกำหนด:
+IdentityFile
+IdentitiesOnly yes
+
+เมื่อจำเป็น
+185) Permission Error Example
+Permission denied (publickey)
+
+ไม่ได้แปลเสมอว่า Public Key ผิด
+อาจเป็น:
+wrong user
+bad .ssh permission
+sshd config
+key not loaded
+
+186) Network Error ต่างกัน
+Connection refused
+
+หมายถึง Host ถึง แต่ไม่มี Service รับ Port หรือ Firewall reject แบบหนึ่ง
+187) Timeout
+Connection timed out
+
+อาจเป็น:
+routing
+firewall drop
+wrong IP
+network issue
+
+ต่างจาก Authentication Error
+188) Troubleshooting Layers
+SSH:
+DNS/IP
+↓
+TCP port
+↓
+SSH handshake
+↓
+host verification
+↓
+authentication
+↓
+authorization/shell
+
+แยกทีละชั้น
+189) Firewall Debug
+ถ้า Service Listen:
+ss -lntp
+
+แต่ Remote เข้าไม่ได้
+อาจเป็น:
+UFW
+cloud firewall
+security group
+routing
+
+190) Host Firewall ไม่ใช่ Firewall เดียวเสมอไป
+Cloud Architecture มีหลาย Layer
+เช่น:
+Cloud LB
+Security Group
+Subnet ACL
+UFW
+Nginx
+
+ต้องรู้ว่า Rule อยู่ตรงไหน
+191) Default Deny
+Security Model ที่แข็งแรงมัก:
+deny by default
+allow what is needed
+
+ดีกว่า:
+allow everything
+then blacklist
+
+ในหลายบริบท
+192) Inbound vs Outbound
+Firewall ไม่ได้มีแต่ Incoming
+บางระบบควบคุม Outbound ด้วย
+เช่น App Server อนุญาตออกไปเฉพาะ:
+DB
+Redis
+payment provider
+DNS
+package mirror
+
+ตาม Security Level
+193) Egress Control
+ช่วยลด Damage ถ้า App ถูก compromise
+เช่น Malware จะ Call Command-and-Control Server อาจถูก block
+แต่เพิ่ม Operational Complexity
+194) Security Logging
+ควร Monitor:
+failed SSH logins
+sudo usage
+unexpected service restarts
+new user creation
+firewall changes
+
+ในระบบ Critical
+195) Login Attempt Spike
+Failed SSH 1000 ครั้งไม่ได้แปลว่าถูก Hack สำเร็จ
+แต่เป็น Signal ว่า Service Public และกำลังถูก Scan/Brute-force
+196) Successful Login สำคัญกว่า Fail อย่างเดียว
+ควรตอบได้ว่า:
+ใคร login
+จาก IP ไหน
+เวลาไหน
+
+โดยเฉพาะ Production
+197) Time Synchronization
+Security Logs ต้องมีเวลาถูก
+NTP สำคัญเพื่อ Correlate Events หลาย Server
+198) Backup Security
+Backup มีข้อมูล Production เหมือนกัน
+ถ้า Backup Bucket Public:
+Production security ดีแค่ไหนก็ไร้ประโยชน์
+
+Backup ต้อง:
+access controlled
+encrypted
+audited
+
+199) SSH Backup Key
+Recovery Account/Break-glass Access ต้องมีการจัดการที่ปลอดภัย
+ไม่ควรเป็น Password ง่าย ๆ ที่ไม่มีใคร Rotate
+200) Break-glass Account
+คือ Emergency Privileged Access ที่ใช้เมื่อระบบ Access ปกติพัง
+ควร:
+ใช้เฉพาะฉุกเฉิน
+มี audit
+credential ปลอดภัย
+rotate หลังใช้
+
+201) Principle: Don't lock yourself out
+ก่อนเปลี่ยน:
+SSH config
+firewall
+sudoers
+
+ควร:
+keep current session
+validate syntax
+open second test session
+have recovery access
+
+นี่สำคัญมากใน Remote Server
+202) Production Security Baseline
+ขั้นต่ำโดยแนวคิด:
+non-root human login
+SSH key authentication
+limited sudo
+least-privilege service users
+correct file permissions
+private DB/Redis
+firewall
+security updates
+logs/audit
+secret protection
+
+203) Security ไม่ใช่ Setting ครั้งเดียวแล้วจบ
+ต้องมี Lifecycle:
+provision
+configure
+patch
+monitor
+rotate
+review
+revoke
+
+204) Common Mistake — App runs as root
+ลด Blast Radius ทันทีด้วย Service User
+205) Common Mistake — chmod 777
+แก้ Ownership/Group ที่ต้นเหตุ
+206) Common Mistake — DB/Redis Public
+ใช้ Private Network + Firewall
+207) Common Mistake — Shared root password
+ใช้ Individual Identity + sudo
+208) Common Mistake — Shared SSH private key
+แยก Key ต่อ User/Automation
+209) Common Mistake — Disable password auth ก่อนทดสอบ key
+เสี่ยง Lockout
+210) Common Mistake — เปิดทุก port แล้วหวังว่า app auth จะพอ
+Network Surface ยังสำคัญ
+211) Common Mistake — Secrets ใน Git
+ต้อง Rotate ทันทีถ้า Secret หลุด ไม่ใช่แค่ลบ Commit ล่าสุด
+เพราะ Secret อาจถูก Clone/Cache ไปแล้ว
+212) Common Mistake — Secret อยู่ใน Log
+Mask/Redact Sensitive Values
+และ Review Logging
+213) Common Mistake — Service A อ่าน Files ของ Service B
+แยก Users/Groups/Directories ให้เหมาะ
+214) Common Mistake — root Cron execute world-writable script
+เป็น Privilege Escalation Risk
+215) Common Mistake — Firewall change ผ่าน SSH โดยไม่มี fallback
+เก็บ Session เดิมและ Recovery Path
+216) Mental Model: Three Security Boundaries
+คิดง่าย ๆ เป็น:
+Identity
+→ ใคร
+
+Privilege
+→ ทำอะไรได้
+
+Exposure
+→ เข้าถึงจากที่ไหนได้
+
+217) Example Web App
+Internet
+↓ only 443
+Nginx
+↓ localhost/private
+Node as myapp user
+↓ authenticated connection
+PostgreSQL as limited app DB user
+
+ทุก Layer ลดสิทธิ์ลง
+218) Example Laravel
+Internet
+↓ 443
+Nginx
+↓ FastCGI
+PHP-FPM as www-data
+↓
+MySQL app_user
+
+และ www-data เขียนได้เฉพาะ:
+storage
+cache
+
+ไม่ใช่ทั้ง /var/www
+219) Example Deploy Flow
+Developer/CI as deploy identity
+↓
+upload release
+↓
+set ownership/permissions
+↓
+restart app via limited sudo
+
+Runtime User ไม่ต้องมี Deploy Privilege
+220) Production Security Review Checklist
+ถาม:
+ใคร SSH เข้าได้?
+ใคร sudo ได้?
+app รันเป็น user อะไร?
+ไฟล์ไหน app เขียนได้?
+port ไหน public?
+DB/Redis public ไหม?
+
+221) ต่ออีก
+secrets อยู่ไหน?
+ใครอ่าน secrets ได้?
+SSH keys rotate ยังไง?
+คนออกจากทีม revoke ยังไง?
+logs บอกใครทำอะไรได้ไหม?
+
+222) ถ้าตอบไม่ได้
+Server Access Control ยังไม่ Mature
+223) Troubleshooting Permission Mental Model
+เจอ:
+Permission denied
+
+อย่าใช้ 777
+ไล่:
+process รันเป็น user ไหน?
+↓
+file owner/group คืออะไร?
+↓
+file mode คืออะไร?
+↓
+parent directories traverse ได้ไหม?
+↓
+ควรให้สิทธิ์ใครจริง ๆ?
+
+224) Troubleshooting SSH Mental Model
+host reachable?
+↓
+port 22 reachable?
+↓
+sshd running?
+↓
+correct user?
+↓
+key selected?
+↓
+authorized_keys?
+↓
+permissions?
+
+225) Troubleshooting Security Change
+ก่อน Apply:
+backup config
+validate
+keep session open
+apply minimally
+test
+observe logs
+
+สรุป 6.3
+Security พื้นฐานของ Linux Server ไม่ได้หมายถึง “ตั้ง Password ยาก ๆ” อย่างเดียว แต่คือการกำหนด Identity, Privilege และ Network Exposure ให้ถูกต้อง:
+Human User
+→ individual SSH key + limited sudo
+
+Service User
+→ only permissions needed by app
+
+Files
+→ correct owner/group/mode
+
+Network
+→ expose only required ports
+
+Secrets
+→ readable only by required identities
+
+หลักสำคัญที่สุดคือ:
+อย่ารันทุกอย่างเป็น root และอย่าแก้ Permission ด้วย 777; ให้รู้ก่อนว่า Process รันเป็น User ไหน แล้วให้สิทธิ์เฉพาะ File/Directory ที่มันจำเป็นต้องใช้
+
+และสำหรับ SSH/Firewall:
+ทุกครั้งที่แก้ Remote Access ให้มี Recovery Path — เก็บ Session เดิมไว้, Validate Config และทดสอบ Connection ใหม่ก่อนปิดทางเข้าเดิม
