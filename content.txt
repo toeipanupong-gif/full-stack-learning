@@ -4815,3 +4815,5059 @@ Secrets
 
 และสำหรับ SSH/Firewall:
 ทุกครั้งที่แก้ Remote Access ให้มี Recovery Path — เก็บ Session เดิมไว้, Validate Config และทดสอบ Connection ใหม่ก่อนปิดทางเข้าเดิม
+
+
+6.4 Linux Process, Service, Signals & Resource Management แบบลงลึก
+บทนี้จะเจาะว่า Linux รันโปรแกรมอย่างไร, Process เกิด/ตายยังไง, Service ถูกดูแลยังไง, Signal มีไว้ทำอะไร และเวลา Production ช้า/ค้าง/กิน CPU/RAM เราควรไล่ดูอะไรบ้าง
+
+Mental Model:
+Program
+↓
+Process
+↓
+PID
+↓
+CPU / RAM / File Descriptors / Network
+↓
+Service Manager
+↓
+Signals / Restart / Shutdown
+
+1) Program กับ Process ต่างกันอย่างไร
+Program คือไฟล์/ชุดคำสั่ง เช่น:
+node
+php
+nginx
+mysql
+
+แต่เมื่อ Program ถูก Execute จะกลายเป็น:
+
+Process
+
+เช่น:
+/usr/bin/node
+↓
+PID 7420
+
+ดังนั้นไฟล์ Program หนึ่งตัวสามารถมีหลาย Process ได้
+2) Example
+มี Node App 4 Instances:
+node app.js → PID 1001
+node app.js → PID 1002
+node app.js → PID 1003
+node app.js → PID 1004
+
+เป็น Program เดียวกัน แต่ 4 Processes
+3) PID
+PID = Process ID
+
+Linux ใช้เลขนี้ระบุ Process
+
+เช่น:
+PID 7420
+
+เวลาเราจะ:
+inspect
+signal
+kill
+monitor
+
+มักอ้างผ่าน PID
+4) PID ไม่ถาวร
+Process ตายแล้ว PID สามารถถูกนำกลับมาใช้ใหม่ในอนาคตได้
+
+ดังนั้นอย่าคิดว่า:
+PID 7420
+
+คือ App เดิมตลอดไป
+5) ดู Process
+ps aux
+
+จะแสดงข้อมูลประมาณ:
+USER
+PID
+%CPU
+%MEM
+COMMAND
+
+6) หา Process เฉพาะ
+ps aux | grep node
+
+หรือ:
+pgrep node
+
+ดู Command Line ด้วย:
+pgrep -a node
+
+7) ps aux Snapshot
+ps แสดงสถานะ ณ ตอนที่รัน Command
+
+ไม่ใช่ Real-time
+
+ถ้าต้องการ Live ใช้:
+top
+
+หรือ htop
+8) PPID
+PPID = Parent Process ID
+
+Process ส่วนใหญ่เกิดจาก Process อื่น
+
+เช่น:
+systemd
+↓
+node
+
+Node มี Parent เป็น systemd
+9) ดู PID/PPID
+ps -ef
+
+หรือ:
+ps -o pid,ppid,cmd -p 7420
+
+10) Process Tree
+pstree
+
+อาจเห็น:
+systemd
+├─ nginx
+│  ├─ nginx worker
+│  └─ nginx worker
+├─ php-fpm
+│  ├─ php-fpm worker
+│  └─ php-fpm worker
+└─ node
+
+ช่วยเข้าใจว่าใครสร้างใคร
+11) Process Lifecycle
+Concept:
+created
+↓
+running / runnable
+↓
+sleeping / waiting
+↓
+running
+↓
+exit
+
+Process ไม่ได้ใช้ CPU ตลอดเวลา
+
+ส่วนใหญ่ Web Server ใช้เวลารอ I/O เยอะมาก
+12) Running
+Process กำลังใช้ CPU หรือพร้อมใช้ CPU
+13) Sleeping
+Process กำลังรออะไรบางอย่าง เช่น:
+network
+disk
+timer
+lock
+socket
+
+Sleeping ไม่ได้แปลว่ามีปัญหา
+
+Server Processes ส่วนมากอยู่ Sleeping ตอนว่าง
+14) Process State
+ใน ps อาจเห็น:
+R
+S
+D
+T
+Z
+
+หลัก ๆ:
+R = running/runnable
+S = sleeping
+D = uninterruptible sleep
+T = stopped
+Z = zombie
+
+15) D State
+D = Uninterruptible Sleep
+
+มักกำลังรอ I/O เช่น Disk/NFS
+
+ถ้ามี Processes ติด D เยอะและ Server ช้า อาจเป็น I/O Problem
+16) Zombie
+Z = Zombie
+
+Child Process จบแล้ว แต่ Parent ยังไม่ได้ Collect Exit Status
+
+Zombie ไม่ได้รัน Code แล้ว
+
+แต่ยังเหลือ Entry ใน Process Table
+17) Zombie หนึ่งสองตัว
+อาจไม่เป็น Disaster ทันที
+
+แต่ถ้ามีจำนวนมากต่อเนื่อง แปลว่า Parent Process จัดการ Child ไม่ถูก
+18) Zombie ฆ่าตรง ๆ ไม่ได้ตามปกติ
+เพราะ Process จริงจบแล้ว
+
+ต้องแก้:
+parent process
+
+ให้ reap child
+
+หรือ restart parent ถ้าจำเป็น
+19) Orphan
+Child Process ยังรัน แต่ Parent ตาย
+
+Linux จะ re-parent Process ตามกลไกของระบบ
+
+Orphan ไม่จำเป็นต้องเป็น Error
+20) Foreground Process
+รัน:
+npm run dev
+
+Shell รอ Process นี้
+
+Terminal ถูกใช้งานโดย Process
+21) Background Process
+รัน:
+command &
+
+Shell กลับมารับ Command ใหม่ได้
+
+แต่ไม่เหมาะเป็น Production Process Management หลัก
+22) ทำไม & ไม่พอใน Production
+เพราะไม่มีการจัดการที่ดีเรื่อง:
+auto restart
+boot startup
+logs
+dependency
+graceful shutdown
+health
+
+ควรใช้:
+systemd
+PM2
+Supervisor
+Container runtime
+
+23) Job Control ใน Shell
+ถ้ากด:
+Ctrl + Z
+
+Process จะถูก Suspend
+
+ไม่ใช่จบ
+
+จากนั้นใช้:
+jobs
+
+ดู Background/Stopped Jobs
+24) fg
+เอา Job กลับ Foreground:
+fg
+
+25) bg
+ให้ Suspended Job ทำต่อใน Background:
+bg
+
+นี่เป็น Shell Job Control ไม่ใช่ Production Process Manager
+26) Signal คืออะไร
+Signal คือ Mechanism ที่ OS ใช้แจ้ง Event ไปยัง Process
+
+เช่น:
+หยุด
+จบ
+reload
+child exited
+
+27) Signal สำคัญที่ควรรู้
+SIGINT
+SIGTERM
+SIGKILL
+SIGHUP
+SIGSTOP
+SIGCONT
+SIGCHLD
+
+28) SIGINT
+มักเกิดจาก:
+Ctrl + C
+
+ใช้ขอให้ Foreground Process หยุด
+
+Process สามารถ Handle Signal นี้ได้
+29) SIGTERM
+ใช้ขอให้ Process ปิดอย่างสุภาพ
+kill PID
+
+โดย Default จะส่ง SIGTERM
+30) Graceful Shutdown
+เมื่อ Process ได้ SIGTERM ควร:
+หยุดรับงานใหม่
+รอ in-flight requests
+ปิด DB connection
+flush logs
+exit
+
+นี่คือ Graceful Shutdown
+31) SIGKILL
+kill -9 PID
+
+ส่ง SIGKILL
+
+Kernel ฆ่าทันที
+
+Process:
+handle ไม่ได้
+ignore ไม่ได้
+cleanup ไม่ได้
+
+32) ทำไม kill -9 ไม่ควรใช้ก่อน
+เพราะ Process ไม่มีโอกาส:
+commit/rollback
+close file
+release lock
+flush buffer
+finish request
+
+ควรใช้เมื่อ SIGTERM ไม่ได้ผลจริง ๆ
+33) SIGHUP
+Historically หมายถึง Hangup
+
+หลาย Daemon ใช้เป็น Signal:
+reload configuration
+
+เช่น Service บางตัว
+
+แต่ Semantics ขึ้นกับ Program
+34) SIGSTOP
+หยุด Process ทันที
+
+Process Handle ไม่ได้
+
+คล้าย Pause
+35) SIGCONT
+ให้ Process ที่ถูก Stop กลับมาทำงานต่อ
+36) SIGCHLD
+Parent ได้รับเมื่อ Child Process เปลี่ยน State/Exit
+
+ใช้สำหรับ Reaping Child Process
+
+เกี่ยวข้องกับ Zombie
+37) ดู Signal Numbers
+kill -l
+
+แสดง Signals ที่ระบบรองรับ
+38) ส่ง SIGTERM Explicit
+kill -TERM 7420
+
+หรือ:
+kill -15 7420
+
+39) ส่ง SIGKILL
+kill -KILL 7420
+
+หรือ:
+kill -9 7420
+
+40) Kill by Name
+pkill node
+
+อันตรายถ้ามีหลาย Node Apps
+
+อาจฆ่าทุกตัวที่ Match
+41) Production Rule
+ก่อน pkill หรือ kill -9
+
+ตรวจ:
+ps -fp PID
+
+หรือ:
+ps aux | grep process
+
+ให้รู้ว่ากำลังฆ่าอะไร
+42) Service คืออะไร
+Service คือ Process/Process Group ที่ตั้งใจให้ทำงานต่อเนื่อง
+
+เช่น:
+nginx
+mysql
+redis
+next-app
+queue-worker
+
+43) systemd
+systemd เป็น Init System + Service Manager ที่ Linux หลาย Distribution ใช้
+
+PID 1 มักเป็น:
+systemd
+
+44) PID 1 สำคัญ
+เป็น Root ของ Process Tree ส่วนใหญ่
+
+ดู:
+ps -p 1 -o pid,comm,args
+
+45) systemd Unit
+Configuration ของ systemd เรียกว่า:
+
+Unit
+
+มีหลายชนิด เช่น:
+.service
+.socket
+.timer
+.mount
+.target
+
+สำหรับ App เราจะเจอ .service บ่อย
+46) Unit File Example
+Concept:
+[Unit]
+Description=My Next.js App
+After=network.target
+
+[Service]
+User=myapp
+WorkingDirectory=/var/www/myapp
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
+47) [Unit]
+กำหนด Metadata/Dependencies เช่น:
+Description
+After
+Requires
+Wants
+
+48) [Service]
+กำหนดว่าจะรัน Process อย่างไร:
+User
+Group
+WorkingDirectory
+ExecStart
+Restart
+Environment
+
+49) [Install]
+ใช้กับ Enable Service ตอน Boot
+
+เช่น:
+WantedBy=multi-user.target
+
+50) ExecStart
+Command หลักที่ systemd ใช้ Start Service
+
+เช่น:
+/usr/bin/node server.js
+
+ควรใช้ Absolute Path
+51) WorkingDirectory
+สำคัญกับ App ที่อ้าง Relative Path
+
+เช่น:
+/var/www/myapp
+
+52) User
+Process จะ Drop Privilege แล้วรันเป็น User ที่กำหนด
+
+เช่น:
+User=myapp
+
+ดีกว่ารัน root
+53) Environment
+สามารถตั้ง Environment Variable:
+Environment=NODE_ENV=production
+
+แต่ Secrets จำนวนมากควรจัดการอย่างเหมาะสมกว่านี้ตามระบบ
+54) EnvironmentFile
+สามารถอ่าน Environment จาก File:
+EnvironmentFile=/etc/myapp/myapp.env
+
+Permission ของ File ต้องเหมาะสม
+55) Restart Policy
+ตัวอย่าง:
+Restart=on-failure
+
+ถ้า Process Exit ด้วย Failure systemd Restart
+56) Restart=always
+Restart แทบทุกกรณีเมื่อ Process Exit
+
+แต่ต้องรู้ว่าต้องการ Behavior นี้จริงหรือไม่
+57) Crash Loop
+ถ้า App Start แล้ว Crash ทันที:
+start
+crash
+restart
+crash
+restart
+
+Restart Policy อาจสร้าง Loop
+
+ต้องดู Logs ไม่ใช่คิดว่า systemd จะ “แก้” Bug ให้
+58) Restart Delay
+ใช้ Concept เช่น:
+RestartSec=5
+
+ป้องกัน Restart Rapid Loop บางส่วน
+59) systemctl daemon-reload
+หลังแก้ Unit File:
+sudo systemctl daemon-reload
+
+ให้ systemd โหลด Unit Config ใหม่
+60) จากนั้น Restart Service
+sudo systemctl restart myapp
+
+61) ดู Status
+systemctl status myapp
+
+ดู:
+active/inactive
+PID
+recent logs
+exit code
+
+62) active (running)
+หมายถึง Process หลักกำลังรัน
+
+ไม่ได้แปลว่า Business App Healthy 100%
+
+เช่น DB อาจต่อไม่ได้
+63) Exit Code
+Process จบจะมี Exit Code
+
+โดยทั่วไป:
+0 = success
+non-zero = error
+
+systemd ใช้ข้อมูลนี้ตัดสิน Restart Policy ได้
+64) Example Node Crash
+App เรียก:
+process.exit(1);
+
+systemd มองเป็น Failure
+
+ถ้า:
+Restart=on-failure
+
+จะ Restart
+65) Graceful systemd Stop
+systemctl stop myapp
+
+systemd มักส่ง SIGTERM ก่อน
+
+รอ Timeout
+
+ถ้ายังไม่จบ อาจส่ง SIGKILL
+66) TimeoutStopSec
+กำหนดเวลาให้ Process Shutdown
+
+เช่น:
+30s
+
+ต้องสัมพันธ์กับ Request/Job Duration
+67) Long-running Worker
+ถ้า Job ปัจจุบันใช้ 2 นาที แต่ TimeoutStopSec=10
+
+Deploy อาจ kill Job กลางทาง
+
+ต้องออกแบบ:
+graceful worker shutdown
+job idempotency
+
+ร่วมกัน
+68) Process Group
+บาง Service สร้าง Child Processes
+
+เวลาหยุด Service ต้องรู้ว่า:
+จะหยุดเฉพาะ main process
+หรือ child ทั้งหมด
+
+systemd ใช้ Control Groups ช่วยจัดการ Process Group
+69) cgroups
+cgroups = Control Groups
+
+Linux Mechanism สำหรับจัดกลุ่ม Processes และจำกัด/วัด Resource เช่น:
+CPU
+memory
+process count
+I/O
+
+systemd และ Containers ใช้ cgroups เยอะมาก
+70) ทำไม cgroups สำคัญ
+สามารถป้องกัน App หนึ่งกิน Resource ทั้งเครื่อง
+
+เช่น:
+MemoryMax=2G
+
+ตาม systemd capabilities/config
+71) Resource Limit
+อาจจำกัด:
+Memory
+CPU
+open files
+processes
+
+แต่ Limit ต้องตั้งจาก Workload จริง
+72) CPU คือ Shared Resource
+Scheduler ของ Linux แจก CPU Time ให้ Processes/Threads
+
+หลาย Processes สามารถดูเหมือนทำงานพร้อมกัน
+73) CPU Core
+ถ้ามี 4 Cores:
+สูงสุดประมาณ 4 CPU-bound execution streams
+
+รันพร้อมกันจริงระดับหนึ่ง
+
+I/O Tasks สามารถมี Concurrency มากกว่านั้นเพราะไม่ได้ใช้ CPU ตลอด
+74) ดูจำนวน CPU
+nproc
+
+หรือ:
+lscpu
+
+75) CPU Utilization
+ใช้:
+top
+
+ดูว่า Process ไหนกิน CPU
+76) 100% CPU แปลว่าอะไร
+ขึ้นกับ Tool
+
+ใน top Process หนึ่งอาจเห็น >100% หากใช้หลาย Threads/Cores
+
+จึงต้องเทียบกับจำนวน Cores
+77) User CPU vs System CPU
+ใน top อาจเห็น:
+us
+sy
+id
+wa
+
+โดยคร่าว:
+us = user-space CPU
+sy = kernel/system CPU
+id = idle
+wa = I/O wait
+
+78) I/O Wait สูง
+ถ้า:
+wa สูง
+
+Server อาจไม่ได้ติด CPU
+
+แต่ติด:
+disk
+storage
+network filesystem
+
+เพิ่ม CPU อาจไม่ช่วย
+79) Load Average
+ดูจาก:
+uptime
+
+เช่น:
+load average: 2.00, 1.50, 1.20
+
+คือประมาณช่วง:
+1 นาที
+5 นาที
+15 นาที
+
+80) Load Average ไม่เท่ากับ CPU
+รวม Tasks ที่:
+runnable
+หรือ uninterruptible I/O wait
+
+ดังนั้น Load สูงอาจมาจาก Disk Problem
+81) Compare กับ CPU Count
+4-core Server
+
+Load:
+1
+
+เบา
+4
+
+ค่อนข้าง Busy
+20
+
+มี Queue ของงานสูง
+
+แต่ต้องดู Context ด้วย
+82) Load Spike
+ถ้า:
+1m = 20
+5m = 3
+15m = 1
+
+เพิ่งเกิด Spike ล่าสุด
+83) Sustained Load
+ถ้า:
+20 18 17
+
+แปลว่า High Load ต่อเนื่องมาสักพัก
+84) Memory
+Process ต้องใช้ RAM สำหรับ:
+code
+heap
+stack
+cache
+buffers
+
+85) ดู Memory
+free -h
+
+ดู:
+total
+used
+free
+buff/cache
+available
+
+86) available สำคัญ
+Linux ใช้ RAM ที่ว่างทำ Cache
+
+ดังนั้น free ต่ำไม่จำเป็นต้องแปลว่า RAM หมด
+
+ดู available ประกอบ
+87) RSS
+RSS = Resident Set Size
+
+Memory ของ Process ที่อยู่ใน Physical RAM
+
+ดูได้จาก ps/top
+88) VSZ / Virtual Memory
+Process อาจ Reserve Address Space มากกว่าที่ใช้จริง
+
+จึงไม่ควรดู VSZ แล้วสรุปทันทีว่าใช้ RAM เท่านั้น
+89) Memory Leak
+Process Memory เพิ่ม:
+300MB
+600MB
+1.2GB
+2GB
+
+แม้ Load คงเดิม
+
+อาจมี Leak
+90) Restart ช่วย Memory Leak ไหม
+ช่วยคืน Memory ชั่วคราว
+
+แต่ไม่ใช่ Root Cause Fix
+
+ถ้าทุก 6 ชั่วโมงต้อง Restart App:
+ควรหาสาเหตุ
+
+91) Worker Recycling
+บาง Runtime/Framework ตั้งให้ Worker Restart หลัง:
+N requests
+N jobs
+memory threshold
+
+ช่วยลดผลของ Leak บางชนิด
+
+แต่ยังต้องแก้ต้นเหตุ
+92) Swap
+ถ้า RAM Pressure สูง Linux อาจใช้ Swap
+
+ดู:
+free -h
+
+93) Swap สูง
+ไม่ได้แปลว่าพังทันที
+
+แต่ถ้ามี Active Swapping หนัก:
+performance อาจตกมาก
+
+เพราะ Disk ช้ากว่า RAM
+94) OOM
+OOM = Out Of Memory
+
+ถ้า Memory ไม่พออย่างหนัก Kernel อาจใช้ OOM Killer
+95) OOM Killer
+Kernel เลือก Process บางตัวฆ่าเพื่อคืน Memory
+
+อาการ:
+App หายเอง
+Service restart
+
+96) ตรวจ OOM
+ใช้:
+dmesg | grep -i oom
+
+หรือ:
+journalctl -k | grep -i oom
+
+ตาม Permission/System
+97) Example
+App ไม่ได้ Error Log อะไร
+
+แต่ถูก kill ทันที
+
+systemd บอก:
+code=killed
+signal=KILL
+
+อาจเป็น OOM
+
+ต้องดู Kernel Logs
+98) อย่าแก้ OOM ด้วย Restart อย่างเดียว
+ต้องหา:
+memory leak?
+worker count มากไป?
+cache ใหญ่?
+query result ใหญ่?
+server RAM น้อย?
+
+99) File Descriptor
+Process ใช้ File Descriptor กับ:
+files
+TCP sockets
+pipes
+devices
+
+100) File Descriptor Leak
+App เปิด:
+socket
+file
+connection
+
+แต่ไม่ปิด
+
+จำนวน FD เพิ่มเรื่อย ๆ
+
+สุดท้ายเจอ:
+Too many open files
+
+101) ดู Limit
+ulimit -n
+
+102) ดู FD ของ Process
+ls /proc/PID/fd | wc -l
+
+หรือ:
+lsof -p PID
+
+103) ถ้า FD เพิ่มไม่หยุด
+ต้องหา Resource Leak
+
+ไม่ควรแก้แค่เพิ่ม ulimit
+104) Socket ก็เป็น FD
+Web Server ที่มี Connections เยอะใช้ FDs เยอะ
+
+ดังนั้น High-concurrency Servers ต้องตั้ง Limits ให้เหมาะ
+105) Network Connections
+ดู:
+ss -tan
+
+หรือ Listening:
+ss -lntp
+
+106) Connection States
+TCP มี State เช่น:
+LISTEN
+ESTABLISHED
+TIME-WAIT
+CLOSE-WAIT
+
+แต่ละ State บอกเรื่องต่างกัน
+107) ESTABLISHED
+Connection ที่เชื่อมต่อแล้ว
+
+High จำนวนมากอาจปกติสำหรับ Busy Server
+
+ต้องเทียบกับ Traffic
+108) TIME-WAIT
+Connection ปิดแล้วแต่ OS รอช่วงหนึ่งเพื่อความถูกต้องของ TCP
+
+จำนวนเยอะไม่จำเป็นต้องเป็น Bug
+
+แต่ถ้ามหาศาลอาจบ่งชี้ Connection Churn สูง
+109) CLOSE-WAIT
+หมายถึง Remote ปิด Connection แล้ว แต่ Local Process ยังไม่ได้ปิด Socket
+
+ถ้ามี CLOSE-WAIT โตต่อเนื่อง อาจเป็น Application Socket Leak
+110) Process Handles Network ยังไง
+Nginx/Node/PHP-FPM Models ต่างกัน
+
+แต่สุดท้ายทุก Process ใช้:
+sockets
+FDs
+kernel network stack
+
+111) Nginx Worker Model
+Concept:
+master
+├→ worker 1
+├→ worker 2
+└→ worker N
+
+Master ดู Config/Workers
+
+Workers รับ Connections
+112) PHP-FPM Model
+master
+├→ PHP worker
+├→ PHP worker
+├→ PHP worker
+└→ ...
+
+แต่ละ Worker รัน PHP Request หนึ่งงานในเวลาหนึ่งโดยทั่วไป
+113) ถ้า PHP-FPM Workers เต็ม
+Request ใหม่ต้อง:
+queue/wait
+
+Latency เพิ่ม
+
+ถ้ายาวมากอาจ timeout
+114) เพิ่ม PHP Workers เสมอช่วยไหม
+ไม่เสมอ
+
+ถ้าแต่ละ Workerใช้ RAM 150MB
+
+100 workers:
+15GB RAM
+
+ยังไม่รวม OS/DB/Nginx
+
+อาจ OOM
+115) Node Model
+Node Process มี Event Loop
+
+หลาย I/O Requests ทำ In-flight พร้อมกันได้
+
+แต่ CPU-heavy JS หนึ่ง Task สามารถ Block Event Loop
+116) Event Loop Block
+เช่น:
+JSON processing ขนาดมหาศาล
+image processing CPU-heavy
+crypto synchronous
+
+อาจทำให้ Requests ทั้ง Process ช้า
+117) วิธีแก้ CPU-heavy Node
+เช่น:
+worker threads
+separate workers
+queue
+external processing service
+
+ตาม Use Case
+118) Node หลาย Processes
+ใช้หลาย Processes เพื่อใช้หลาย CPU Cores เช่น:
+instance 1
+instance 2
+instance 3
+instance 4
+
+อยู่หลัง Load Balancer
+119) PM2 Cluster Mode
+PM2 สามารถช่วย Spawn Node หลาย Processes
+
+แต่ Concept หลักคือ:
+multiple node processes
+
+ไม่ใช่ Magic ที่ทำ Single Event Loop เป็น Multi-thread
+120) Service Restart
+เวลารัน:
+sudo systemctl restart myapp
+
+เกิด:
+stop old process
+↓
+start new process
+
+ถ้ามี Instance เดียว อาจมี Downtime ชั่วคราว
+121) Reload
+บาง Service รองรับ:
+systemctl reload nginx
+
+อาจโหลด Config ใหม่โดยรักษา Connections เดิม
+
+เหมาะกับ Nginx
+
+แต่ไม่ใช่ทุก App รองรับ reload
+122) Zero-downtime ต้องมองทั้ง Architecture
+ถ้ามี:
+Load Balancer
+App A
+App B
+
+สามารถ Remove A → Restart → Health Check → Add A กลับ
+
+แล้วทำ B
+
+นี่คือ Rolling Restart
+123) Connection Draining
+ก่อนหยุด App:
+หยุดส่ง request ใหม่
+
+แต่ให้ Request เก่าจบ
+
+ลด Error ระหว่าง Deploy
+124) Process Supervisor ไม่เท่ากับ Health Checker
+systemd อาจเห็น:
+process running
+
+แต่ /health อาจ fail
+
+จึงต้องมี Monitoring/LB Health Check เพิ่ม
+125) Example
+Node Process alive
+
+แต่ Event Loop Deadlocked/Blocked
+
+systemd:
+active
+
+แต่ User:
+timeout
+
+ต้องมี Application Health/Latency Metrics
+126) CPU Saturation
+ถ้า CPU ~100% ต่อเนื่อง:
+
+ผล:
+request latency สูง
+scheduler queue สูง
+timeouts
+
+127) CPU Saturation Diagnosis
+ดู:
+top
+
+หา Process
+
+จากนั้นถาม:
+traffic สูง?
+CPU-heavy endpoint?
+infinite loop?
+compression?
+build process?
+
+128) Production Build บน Server
+ถ้า npm run build ใช้ CPU/RAM สูงมากขณะ Server รับ Traffic
+
+อาจกระทบ User
+
+นี่เป็นเหตุผลที่ CI Build Artifact นอก Production Host มักดีกว่า
+129) Nice Value
+Linux มี Scheduling Priority ผ่าน nice
+
+เช่น Background Task อาจตั้ง Priority ต่ำกว่า
+
+แต่ต้องใช้ด้วยความเข้าใจ
+130) nice
+เริ่ม Process ด้วย Priority:
+nice -n 10 command
+
+ค่า Nice สูง = Priority ต่ำลงโดยทั่วไป
+131) renice
+ปรับ Existing Process:
+renice 10 -p PID
+
+ไม่ใช่ Tool แก้ Performance หลัก แต่มีประโยชน์บาง Workload
+132) CPU Affinity
+Advanced: กำหนดว่า Process ใช้ CPU Cores ไหนได้
+
+ใช้ Tool เช่น taskset
+
+แต่ Web App ทั่วไปไม่จำเป็นต้องแตะก่อนมีเหตุผล
+133) Resource Contention
+Server เดียวอาจมี:
+Node
+PHP
+MySQL
+Redis
+Build process
+Cron
+
+ทุกตัวแย่ง:
+CPU
+RAM
+Disk
+Network
+
+การวางทุกอย่างเครื่องเดียวสะดวก แต่ Failure/Contention ผูกกัน
+134) Example Cron กระทบเว็บ
+Cron:
+compress 100GB backup
+
+กิน:
+CPU + disk I/O
+
+User Website จึงช้าทั้งที่ App Code ไม่เปลี่ยน
+
+ต้องดูทั้ง Host
+135) Cron Overlap
+Cron ทุก 5 นาที
+
+แต่ Job ใช้ 8 นาที
+
+Timeline:
+00:00 job A
+00:05 job B
+00:08 A done
+00:10 job C
+
+ช่วงหนึ่งมีหลาย Jobs พร้อมกัน
+
+Load เพิ่มแบบลูกโซ่
+136) ป้องกัน Overlap
+ใช้:
+flock
+app no-overlap
+distributed lock
+queue
+
+ตาม Scope
+137) Process Limit
+User/System อาจมี Limit จำนวน Processes
+
+ดู:
+ulimit -u
+
+ถ้า Fork Processes มากเกินอาจสร้างไม่ได้
+138) Fork Bomb Concept
+Process สร้าง Child Processes ไม่หยุด
+
+สามารถกิน Process Table/CPU จนเครื่องแทบใช้ไม่ได้
+
+จึงมี Resource Limits
+139) Threads
+Process หนึ่งอาจมีหลาย Threads
+
+ดู:
+ps -eLf
+
+หรือ top -H
+
+ตามระบบ
+140) Thread Count สูง
+อาจเป็นปกติของ Runtime/DB
+
+แต่ถ้าเพิ่มไม่หยุดอาจมี Thread Leak
+141) Context Switching
+CPU สลับระหว่าง Processes/Threads
+
+ถ้ามี Threads มากเกินไป:
+context switch overhead
+
+เพิ่ม
+
+Concurrency ไม่ได้ฟรี
+142) Process vs Thread Memory
+Processes แยก Address Space มากกว่า Threads
+
+ดังนั้น Spawn Process จำนวนมากมักใช้ Memory มากกว่า Threads
+143) Fork
+Linux สามารถสร้าง Child Process ผ่าน fork()
+
+Child เริ่มจาก Address Space ที่เกี่ยวข้องกับ Parent ด้วย Copy-on-write Semantics
+
+เป็นพื้นฐานของ Process Model หลายระบบ
+144) Exec
+หลัง Fork Process อาจ exec() Program ใหม่
+
+Concept:
+fork
+↓
+child
+↓
+exec another program
+
+Shell ใช้แนวคิดนี้ในการรัน Commands
+145) Shell Command
+เมื่อรัน:
+node app.js
+
+Shell สร้าง Process แล้ว Execute Node
+146) Process Exit
+Process อาจจบเพราะ:
+return normally
+exit()
+uncaught error
+signal
+OOM kill
+segmentation fault
+
+ต้องแยก Root Cause
+147) Segmentation Fault
+Native Program/Extension อาจ Crash ด้วย:
+SIGSEGV
+
+เช่น Bug ใน Native Library
+
+App High-level บางครั้งก็เจอผ่าน Extension
+148) Core Dump
+System สามารถเก็บ Memory Snapshot ตอน Crash เป็น Core Dump
+
+ใช้ Debug Native Crash
+
+แต่ไฟล์อาจใหญ่และมี Sensitive Data
+
+ต้องจัดการอย่างระวัง
+149) Restart Count
+ถ้า Service Restart 50 ครั้งวันนี้
+
+แม้ตอนนี้ Active:
+ระบบยังไม่ Healthy
+
+ควร Monitor Restart Frequency
+150) Stable Process
+Healthy Service ไม่ควร Crash/Restart บ่อยโดยไม่มีเหตุผล
+151) Uptime ของ Process
+ดูผ่าน Tools เช่น:
+ps -p PID -o etime=
+
+ถ้า Service ที่ควรอยู่ทั้งวันมี uptime 30 sec บ่อย ๆ:
+crash loop
+
+152) Startup Failure
+Common Causes:
+missing env
+permission denied
+port already used
+config invalid
+DB unavailable
+dependency missing
+
+153) Port Already Used
+Node:
+EADDRINUSE
+
+ตรวจ:
+ss -lntp | grep :3000
+
+แล้วหาว่า Process เดิมคืออะไร
+154) อย่า Kill ก่อนตรวจ
+อาจมี Production Process ตัวจริงรันอยู่
+
+และคุณกำลัง Start ตัวใหม่ซ้ำ
+155) Environment Mismatch
+รันใน Shell:
+works
+
+แต่ systemd:
+fails
+
+อาจเพราะ Environment/PATH/WorkingDirectory ต่างกัน
+156) systemd ไม่มี Interactive Shell Environment ทั้งหมด
+อย่าสมมติว่า .bashrc ของคุณจะถูกอ่านโดย Service
+
+ควรกำหนด Config ใน Unit/EnvironmentFile อย่างชัดเจน
+157) Absolute Path
+ถ้า systemd หา npm ไม่เจอ
+
+ใช้:
+which npm
+
+แล้วกำหนด Absolute Path ตาม Environment ที่เหมาะ
+158) NVM Caveat
+ถ้าติดตั้ง Node ผ่าน NVM ใน User Shell
+
+systemd อาจไม่เห็น Node เพราะ NVM ถูกโหลดจาก Shell Config
+
+นี่เป็น Production Issue ที่เจอบ่อย
+159) Better Production Runtime Installation
+ควรให้ Runtime Path ชัดและ Stable
+
+เช่นติดตั้ง Node แบบที่ Service Manager เข้าถึงได้อย่าง predictable
+
+หรือใช้ Container
+160) Logging stdout/stderr
+systemd สามารถเก็บ stdout/stderr ของ Service ไป Journal
+
+ดังนั้น App เขียน:
+console.log
+console.error
+
+สามารถดูผ่าน:
+journalctl -u myapp
+
+ได้ตาม Config
+161) Follow App Log
+journalctl -u myapp -f
+
+มีประโยชน์มากตอน Restart/Deploy
+162) Recent Errors
+journalctl -u myapp --since "30 minutes ago"
+
+ช่วย Incident Investigation
+163) Process Stuck
+Process Alive แต่ Request ค้าง
+
+ตรวจหลายอย่าง:
+CPU?
+I/O wait?
+network?
+DB?
+locks?
+file descriptors?
+event loop?
+
+อย่า Restart ทันทีโดยไม่เก็บ Evidence ถ้าทำได้
+164) Evidence ก่อน Restart
+เช่น:
+ps aux
+top
+free -h
+df -h
+ss -lntp
+journalctl
+
+ถ้าพอมีเวลา
+
+เพราะ Restart อาจล้าง State ที่ใช้ Debug
+165) Mitigation กับ Investigation
+Incident เร่งด่วน:
+ต้อง restore service ก่อน
+
+อาจ Restart
+
+แต่หลังจากนั้นต้องทำ Root Cause Analysis
+
+ไม่ใช่จบที่ “restart แล้วหาย”
+166) Resource Exhaustion
+Production Failure จำนวนมากมาจาก Resource หมด เช่น:
+RAM
+disk
+DB connections
+file descriptors
+threads
+workers
+ports
+
+ไม่ได้มาจาก Code Exception ตรง ๆ เสมอไป
+167) Disk Full กระทบ Process
+App อาจเขียนไม่ได้:
+logs
+temp files
+uploads
+database
+
+แล้ว crash/fail
+
+ดังนั้น Resource Management ต้องดูทั้ง Host
+168) /tmp Full
+App ที่ใช้ Temp Files อาจ fail แม้ /var ยังมีที่
+
+เพราะ Filesystem อาจแยกกัน
+
+ดูด้วย:
+df -h
+
+ทุก mount
+169) Inode Full
+ถึง Disk GB เหลือก็สร้างไฟล์ใหม่ไม่ได้ถ้า Inode หมด
+
+เช็ก:
+df -i
+
+170) Process Scheduling กับ Latency
+ถ้า Host มี CPU Tasks มากเกิน:
+request พร้อมรัน
+แต่ต้องรอ CPU
+
+เกิด Queue ที่ OS Scheduler
+
+Latency เพิ่มแม้ App Logic เดิม
+171) CPU Steal
+บน VM อาจมี Metric steal
+
+หมายถึง Hypervisor ใช้ CPU ไปให้ VM อื่น ทำให้ VM เราไม่ได้ CPU ตามที่ต้องการ
+
+ถ้าสูงผิดปกติอาจเป็น Host Contention
+172) Load ไม่ควรถูกดูเดี่ยว ๆ
+ต้องดูร่วมกับ:
+CPU utilization
+I/O wait
+memory
+process states
+traffic
+
+ถึงจะวิเคราะห์ถูก
+173) Example CPU Problem
+CPU 100%
+load 8
+4 cores
+I/O wait low
+
+มีแนวโน้ม CPU-bound
+
+หา Process ด้วย top
+174) Example Disk Problem
+CPU 20%
+load 20
+I/O wait 60%
+หลาย D-state processes
+
+มีแนวโน้ม Storage/I/O Problem
+175) Example Memory Problem
+available RAM ≈ 0
+swap heavy
+OOM logs
+
+มี Memory Pressure
+176) Example Connection Problem
+CPU ต่ำ
+RAM ปกติ
+แต่ app timeout
+
+อาจเป็น:
+DB pool exhausted
+external API slow
+socket leak
+
+ต้องดู Metrics ชั้น Application
+177) Resource Limits ไม่ควรตั้งจาก Guess
+เช่น:
+worker 1000
+
+เพราะ “เยอะดี”
+
+ต้องคำนวณจาก:
+RAM per worker
+CPU
+DB connections
+traffic
+latency
+
+178) Example PHP-FPM Sizing
+ถ้า Worker เฉลี่ย 100MB
+
+Server มี RAM 8GB
+
+แต่ OS/Nginx/Agent ใช้ 2GB
+
+เหลือ:
+~6GB
+
+理论สูงสุดทาง Memory ประมาณ:
+60 workers
+
+แต่ควรมี Headroom และพิจารณา CPU/DB ด้วย
+
+ไม่ใช่ตั้ง 60 อัตโนมัติ
+179) Headroom
+อย่าใช้ Resource Limit ถึง 100%
+
+ต้องเผื่อ:
+traffic spikes
+OS cache
+deploy
+monitoring
+unexpected workload
+
+180) Saturation
+Saturation คือ Resource ใกล้เต็ม Capacity
+
+เช่น:
+CPU queue
+DB connection pool full
+worker pool full
+disk I/O queue
+
+Latency มักพุ่งก่อนระบบ crash
+181) USE Method
+แนวคิดวิเคราะห์ Resource:
+Utilization
+Saturation
+Errors
+
+เช่น CPU:
+utilization = CPU %
+saturation = runnable queue/load
+errors = hardware/kernel issues
+
+182) Web Worker Pool
+ดู:
+utilization = busy workers %
+saturation = queued requests
+errors = worker crashes/timeouts
+
+เป็น Mental Model ที่ดี
+183) DB Pool
+utilization = used connections
+saturation = waiting borrowers
+errors = connection failures
+
+184) Restart Strategy
+Service Critical:
+Restart=on-failure
+
+ช่วย Recovery จาก Crash
+
+แต่ถ้า Bug Permanent:
+restart storm
+
+จึงควรมี:
+delay
+monitoring
+alerting
+
+185) Auto Restart ไม่แทน Monitoring
+ระบบที่ Restart เองทุก 2 นาทีไม่ใช่ Healthy เพียงเพราะ User ยังเข้าได้
+
+ต้อง Alert
+186) Crash-only Design
+บาง Systems ออกแบบให้ Process Restart ได้ง่าย เพราะ State Durable อยู่นอก Process
+
+เช่น:
+stateless app server
+
+ช่วย Recovery
+187) Local Memory State
+ถ้า Process ตายแล้ว User Session/Job State หาย:
+recovery ยาก
+
+นี่เป็นเหตุผลที่ Production Apps มักเก็บ Durable State ใน External Store
+188) Graceful Shutdown + Stateless
+เป็น Combination ที่ดีสำหรับ:
+rolling deployment
+autoscaling
+instance replacement
+
+189) Process Health Checklist
+ถาม:
+Process อยู่ไหม?
+Restart บ่อยไหม?
+กิน CPU เท่าไร?
+กิน RAM เท่าไร?
+เปิด FD กี่ตัว?
+Listen port ถูกไหม?
+Logs มีอะไร?
+
+190) Host Health Checklist
+ถาม:
+CPU?
+load?
+RAM?
+swap?
+disk?
+inode?
+I/O?
+network?
+
+191) Service Health Checklist
+ถาม:
+systemd active?
+readiness?
+dependencies?
+error rate?
+latency?
+
+สามระดับนี้ไม่เหมือนกัน
+192) Troubleshooting Example — App ช้า
+เริ่ม:
+uptime
+top
+free -h
+df -h
+
+ดู Host ก่อน
+193) ต่อ
+systemctl status myapp
+journalctl -u myapp --since "15 minutes ago"
+
+ดู Service
+194) ต่อ
+ss -lntp
+curl http://127.0.0.1:3000/health
+
+ดู Network/Application
+195) ถ้า Host ปกติ
+ค่อยลง:
+DB latency
+Redis
+external API
+application profiling
+
+อย่าเดาสุ่ม
+196) Troubleshooting Example — Process ตายเอง
+ดู:
+systemd status
+journal logs
+kernel/OOM logs
+exit signal
+
+แยก:
+app exception?
+OOM?
+manual kill?
+deploy?
+
+197) Troubleshooting Example — CPU 100%
+หา PID:
+top
+
+จากนั้น:
+ps -fp PID
+
+ดูว่าเป็นอะไร
+
+อย่า kill -9 ก่อนรู้ว่า Process ไหน
+198) Troubleshooting Example — RAM หมด
+ps aux --sort=-%mem | head
+
+ดู Process ที่ใช้ Memory สูง
+
+จากนั้นดู Trend/Logs
+199) Troubleshooting Example — Port ใช้งานอยู่
+ss -lntp | grep :3000
+
+หา Owner
+
+แล้วตัดสินใจว่า:
+หยุด old service
+เปลี่ยน port
+หรือ config duplicate
+
+200) Mental Model ที่ควรจำ
+Process ปัญหาไม่ได้มีแค่:
+alive / dead
+
+แต่มี:
+alive but CPU saturated
+alive but memory leaking
+alive but blocked on I/O
+alive but no free connections
+alive but stuck
+
+ดังนั้น systemctl status = running ไม่พอ
+201) อีก Mental Model
+Process
+→ consumes resources
+
+Service Manager
+→ keeps process lifecycle controlled
+
+Health Check
+→ tells whether app can serve
+
+Monitoring
+→ tells whether performance is degrading
+
+แต่ละอย่างมีหน้าที่ต่างกัน
+202) Production Rule
+ถ้า Process ต้องรันตลอด:
+อย่ารันด้วย Terminal แล้วหวังว่ามันจะอยู่ตลอด ให้ Process Manager เป็นเจ้าของ Lifecycle
+
+203) Production Rule อีกข้อ
+ใช้ SIGTERM/Graceful Shutdown ก่อน SIGKILL เพราะการปิดอย่างถูกต้องช่วยป้องกัน Request, Job และ State ค้างกลางทาง
+
+204) และอีกข้อ
+CPU, RAM, Disk, File Descriptor, Connection และ Worker ทุกอย่างมี Capacity Limit; Concurrency ที่มากเกิน Capacity จะเปลี่ยนจาก “เร็วขึ้น” เป็น “รอมากขึ้นและล่มง่ายขึ้น”
+
+สรุป 6.4
+Linux Process คือ Program ที่กำลังรันและมี Resource ของตัวเอง เช่น:
+PID
+CPU
+RAM
+file descriptors
+network sockets
+
+ส่วน systemd / PM2 / Supervisor มีหน้าที่ดูแล Lifecycle เช่น Start, Stop, Restart และ Start ตอน Boot ขณะที่ Signal เช่น SIGTERM ใช้สำหรับ Graceful Shutdown และ SIGKILL เป็นทางเลือกสุดท้ายเมื่อ Process ไม่ตอบสนอง
+
+เวลา Production ช้า อย่าดูแค่ Process ว่า “ยัง Running” แต่ต้องดู:
+CPU
+Load
+RAM
+Swap
+I/O
+File Descriptors
+Connections
+Restart Count
+Logs
+
+หลักสำคัญคือ:
+Process ที่ยังมีชีวิตไม่ได้หมายความว่า Service Healthy — มันอาจกำลัง Saturated, Blocked, Leaking หรือรอ Dependency อยู่ก็ได้
+
+
+6.5 Linux Networking, Ports, DNS & Connectivity Troubleshooting แบบลงลึก
+บทนี้จะโฟกัสว่าเวลา Server A ติดต่อ Server B ไม่ได้ เราควรไล่ดูอะไรบ้าง ตั้งแต่ IP, Interface, Routing, DNS, Port, Firewall ไปจนถึง TCP Connection และวิธีใช้ curl, ss, nc, dig ให้ถูกจุด
+
+Mental Model:
+Application
+↓
+DNS
+↓
+IP
+↓
+Routing
+↓
+Firewall
+↓
+Port
+↓
+Process listening
+↓
+Protocol/Application response
+
+ถ้าต่อไม่ได้ ให้ไล่จากล่างขึ้นบนหรือบนลงล่างอย่างเป็นระบบ ไม่เดาสุ่ม
+1) IP Address คืออะไร
+IP คือ Address ที่ใช้ระบุ Network Interface
+
+เช่น:
+192.168.1.10
+10.0.1.15
+203.0.113.20
+
+Server หนึ่งเครื่องอาจมีหลาย IP ได้
+2) Private IP
+ช่วงที่ใช้ภายใน Network เช่น:
+10.0.0.0/8
+172.16.0.0/12
+192.168.0.0/16
+
+เช่น:
+10.0.1.20
+
+มักใช้ระหว่าง:
+App
+DB
+Redis
+Worker
+
+ภายใน VPC/LAN
+3) Public IP
+เป็น Address ที่ Routable บน Internet
+
+เช่น Server หน้าเว็บอาจมี Public IP
+
+แต่ Database/Redis ไม่จำเป็นต้องมี Public IP
+4) Network Interface
+เครื่องอาจมี Interfaces เช่น:
+eth0
+ens3
+lo
+
+ดู:
+ip addr
+
+หรือ:
+ip a
+
+5) Loopback Interface
+lo คือ Loopback
+
+IP หลัก:
+127.0.0.1
+
+ใช้คุยกับเครื่องตัวเอง
+6) localhost
+โดยทั่วไป resolve ไป:
+127.0.0.1
+
+หรือ IPv6:
+::1
+
+ดังนั้น:
+curl http://localhost:3000
+
+คือเรียก Service ในเครื่องเดียวกัน
+7) 127.0.0.1 vs 0.0.0.0
+ต่างกันมาก
+
+ถ้า App bind:
+127.0.0.1:3000
+
+รับเฉพาะ Localhost
+
+แต่ถ้า bind:
+0.0.0.0:3000
+
+รับจากทุก IPv4 Interface ของเครื่อง
+8) Example
+Server มี:
+127.0.0.1
+10.0.1.20
+203.0.113.20
+
+App bind:
+127.0.0.1:3000
+
+เรียกจาก Server เดียวกันได้
+
+แต่เครื่องอื่นเรียก:
+10.0.1.20:3000
+
+ไม่ได้
+9) ถ้า bind 0.0.0.0
+App ฟังทุก Interface
+
+แต่ยังไม่ได้แปลว่า Internet เข้าได้เสมอ เพราะยังมี:
+firewall
+security group
+routing
+
+อีกชั้น
+10) Port คืออะไร
+IP ระบุเครื่อง
+
+Port ระบุ Service บนเครื่องนั้น
+
+เช่น:
+22   SSH
+80   HTTP
+443  HTTPS
+3306 MySQL
+5432 PostgreSQL
+6379 Redis
+3000 Node app
+
+11) Socket Address
+เวลาเขียน:
+10.0.1.20:3306
+
+คือ:
+IP + Port
+
+ร่วมกัน
+12) Process ต้อง Listen Port
+ถ้าไม่มี Process Listen Port นั้น:
+connection refused
+
+มักเกิด
+13) ดู Listening Ports
+ss -lntp
+
+เช่น:
+LISTEN 0 511 127.0.0.1:3000
+
+แปลว่า Process ฟัง TCP Port 3000 เฉพาะ Localhost
+14) ตัวเลือก ss
+-l = listening
+-n = numeric
+-t = TCP
+-p = process
+
+15) หา Port เฉพาะ
+ss -lntp | grep :3000
+
+หรือ:
+ss -lntp | grep :3306
+
+16) ถ้าไม่มี Output
+แปลได้หลายอย่าง:
+service ไม่รัน
+service listen port อื่น
+service bind IPv6
+permission ไม่พอเห็น process
+
+ต้องตรวจต่อ
+17) UDP
+ss -lunp
+
+ใช้ดู UDP Listeners
+
+ต่างจาก TCP
+18) TCP vs UDP
+TCP:
+connection-oriented
+reliable
+ordered
+
+ใช้กับ:
+HTTP/HTTPS
+SSH
+MySQL
+PostgreSQL
+Redis
+
+UDP:
+connectionless
+lower overhead
+no delivery guarantee โดยตัว protocol
+
+ใช้กับบางระบบ เช่น DNS
+19) TCP Handshake
+ก่อนคุยข้อมูล TCP ต้องประมาณ:
+Client → SYN
+Server → SYN-ACK
+Client → ACK
+
+จากนั้น Connection Established
+20) ถ้า Server ไม่มี Listener
+มักได้:
+Connection refused
+
+เพราะ Host ถึง แต่ Port ไม่มี Service รับ
+21) ถ้า Firewall Drop
+มักเห็น:
+Connection timed out
+
+เพราะ Packet ถูกทิ้งเงียบ ๆ
+
+แต่ไม่ใช่ Rule 100% ต้องดู Context
+22) Connection refused Mental Model
+หมายถึง Network ไปถึงปลายทางระดับหนึ่งแล้ว แต่ปลายทางไม่รับ Port นั้น
+
+เช็ก:
+service running?
+port ถูก?
+bind address ถูก?
+
+23) Connection timed out
+อาจหมายถึง:
+routing issue
+firewall drop
+security group
+wrong IP
+network partition
+
+24) DNS คืออะไร
+DNS แปลง:
+api.example.com
+
+เป็น:
+203.0.113.20
+
+Application ส่วนใหญ่มักใช้ Hostname แทน IP ตรง ๆ
+25) DNS Resolution
+เช่น:
+dig api.example.com
+
+จะเห็น Record เช่น:
+A 203.0.113.20
+
+26) A Record
+สำหรับ IPv4
+
+เช่น:
+api.example.com → 203.0.113.20
+
+27) AAAA Record
+สำหรับ IPv6
+28) CNAME
+Alias จากชื่อหนึ่งไปอีกชื่อ
+
+เช่น:
+www.example.com
+→ app.example.net
+
+29) /etc/hosts
+Linux มี Local Name Mapping:
+/etc/hosts
+
+เช่น:
+127.0.0.1 localhost
+10.0.1.20 api.internal
+
+ใช้ก่อน/ร่วมกับ DNS ตาม resolver config
+30) ปัญหา /etc/hosts
+ถ้ามี Entry เก่า:
+api.internal → old IP
+
+DNS ถูกก็จริง แต่เครื่องนี้อาจยังใช้ค่าจาก hosts
+
+จึงควรตรวจเมื่อ Resolution แปลก
+31) Resolver Configuration
+โดยทั่วไปเกี่ยวข้องกับ:
+/etc/resolv.conf
+
+อาจชี้ DNS Servers ที่ใช้
+
+แต่หลาย Distribution ใช้ systemd-resolved หรือ Network Manager จัดการอีกชั้น
+32) dig
+ดู DNS แบบละเอียด
+
+เช่น:
+dig example.com
+
+33) dig +short
+สั้น ๆ:
+dig +short example.com
+
+เช่น:
+203.0.113.20
+
+34) nslookup
+อีก Tool:
+nslookup example.com
+
+ใช้ได้แต่ dig มักละเอียดกว่า
+35) DNS Cache
+Browser/OS/Resolver/CDN อาจ Cache DNS
+
+เปลี่ยน Record แล้วไม่ได้เปลี่ยนทันทีทุกที่
+
+เพราะ TTL
+36) TTL
+DNS TTL = Time To Live
+
+บอก Resolver ว่าค่า Cache ได้นานแค่ไหน
+
+เช่น:
+300 sec
+
+37) เปลี่ยน DNS ก่อน Deploy
+บางทีมลด TTL ก่อน Cutover
+
+เพื่อให้เปลี่ยน IP ได้เร็วขึ้น
+
+แต่ Resolver บางตัวอาจมี Behavior ของตัวเอง
+38) DNS Problem Example
+App ต่อ:
+db.internal
+
+ไม่ได้
+
+ลอง:
+dig db.internal
+
+ถ้าไม่ Resolve:
+DNS problem
+
+ยังไม่ต้องไปดู DB Password
+39) Routing คืออะไร
+Routing ตัดสินว่า Packet จะออก Interface/Gateway ไหน
+
+ดู:
+ip route
+
+40) Default Route
+ตัวอย่าง:
+default via 10.0.1.1 dev eth0
+
+หมายถึง Traffic ที่ไม่ match route เฉพาะ ให้ออก Gateway นี้
+41) Route เฉพาะ
+เช่น:
+10.0.2.0/24 via 10.0.1.1
+
+ใช้ไป Network 10.0.2.x
+42) ถ้าไม่มี Route
+Server อาจรู้ IP ปลายทาง แต่ไม่รู้ส่ง Packet ไปทางไหน
+
+เกิด:
+Network is unreachable
+
+ได้
+43) CIDR
+เช่น:
+10.0.1.0/24
+
+หมายถึง Network Block
+
+/24 คือ Prefix Length
+
+โดยทั่วไปครอบประมาณ:
+10.0.1.0 - 10.0.1.255
+
+44) /32
+หมายถึง IP เดียว
+
+เช่น Firewall Allow:
+203.0.113.50/32
+
+คืออนุญาตแค่ IP นั้น
+45) /0
+เช่น:
+0.0.0.0/0
+
+หมายถึงทุก IPv4 Address
+
+ถ้าใช้กับ DB Port ต้องระวังมาก
+46) ping
+ทดสอบ ICMP Reachability:
+ping 10.0.1.20
+
+ช่วยดู Network ขั้นต้น
+47) Ping Fail ไม่ได้แปลว่า Server Down เสมอไป
+Firewall อาจ Block ICMP แต่ TCP 443 ยังใช้งานได้
+
+ดังนั้นอย่าหยุด Diagnosis ที่ ping
+48) Ping Success ก็ไม่ได้แปลว่า App ใช้งานได้
+Host ตอบ ICMP
+
+แต่ Port 443 อาจปิด
+
+ต้อง Test Port ต่อ
+49) Test TCP Port ด้วย nc
+nc -zv 10.0.1.20 3306
+
+หรือ:
+nc -zv db.internal 3306
+
+50) nc
+nc = Netcat
+
+ใช้ Network Debug ได้หลากหลาย
+
+สำหรับเราใช้บ่อยกับ:
+port connectivity
+
+51) Example Success
+Connection to db.internal 3306 port [tcp/mysql] succeeded!
+
+หมายถึง TCP Connection ถึง Port ได้
+
+ยังไม่ได้แปลว่า:
+username/password ถูก
+database query ได้
+
+52) Layer Separation
+nc ผ่าน:
+network + port OK
+
+แต่ App ยังต่อไม่ได้
+
+ค่อยดู:
+TLS
+authentication
+protocol
+credentials
+application config
+
+53) curl
+สำคัญมากกับ HTTP/HTTPS
+
+เช่น:
+curl https://api.example.com/health
+
+54) curl -I
+ขอ Headers:
+curl -I https://example.com
+
+เหมาะดู:
+status
+location
+cache headers
+server
+
+55) curl -v
+Verbose:
+curl -v https://example.com
+
+เห็น:
+DNS
+connect IP
+TLS
+request headers
+response headers
+
+ช่วยแยก Layer
+56) curl -k
+ปิด Certificate Verification:
+curl -k https://...
+
+ใช้ Debug ชั่วคราวได้ แต่ไม่ควรใช้แก้ Production Security ถาวร
+
+ถ้า -k ทำงาน แต่ปกติไม่ทำงาน:
+TLS certificate validation problem
+
+57) curl --resolve
+มีประโยชน์มาก
+
+เช่น:
+curl --resolve example.com:443:203.0.113.50 https://example.com
+
+บังคับ Hostname ให้ไป IP ที่กำหนด
+
+ช่วย Test Server ใหม่ก่อน DNS Cutover
+58) ทำไมต้อง Hostname เดิม
+เพราะ HTTPS Certificate/SNI อิง Hostname
+
+การ curl IP ตรง ๆ อาจ Test ไม่เหมือน Traffic จริง
+59) SNI
+SNI = Server Name Indication
+
+TLS Client ส่ง Hostname ให้ Server เพื่อเลือก Certificate/Virtual Host ที่ถูก
+
+สำคัญเมื่อ IP เดียว host หลาย Domains
+60) Nginx Virtual Host
+Nginx เลือก Config จาก:
+Host header / server_name
+
+ดังนั้น:
+curl http://127.0.0.1
+
+กับ:
+curl -H "Host: example.com" http://127.0.0.1
+
+อาจได้ผลต่างกัน
+61) Internal App Test
+ถ้า Nginx proxy ไป:
+127.0.0.1:3000
+
+ลอง:
+curl http://127.0.0.1:3000
+
+ถ้าทำงาน:
+app layer likely OK
+
+แล้วค่อยดู Nginx
+62) Full Domain Test
+curl -v https://example.com
+
+ถ้า fail แต่ local 3000 ผ่าน
+
+ปัญหาอาจอยู่:
+Nginx
+TLS
+DNS
+firewall
+LB
+CDN
+
+63) Firewall
+Firewall กำหนด:
+allow/deny traffic
+
+ตาม:
+source
+destination
+port
+protocol
+
+64) UFW
+Ubuntu มักมี:
+sudo ufw status
+
+ดู Rules
+65) Example
+22/tcp  ALLOW  203.0.113.50
+80/tcp  ALLOW  Anywhere
+443/tcp ALLOW  Anywhere
+
+66) Cloud Firewall
+ถ้าอยู่ AWS/GCP/Azure หรือ Cloud อื่น อาจมี Firewall อีกชั้น
+
+เช่นแนวคิด:
+Security Group
+Firewall Rule
+Network ACL
+
+แม้ UFW Allow แต่ Cloud Firewall Block ก็เข้าไม่ได้
+67) Defense Layers
+Internet
+↓
+Cloud firewall
+↓
+Host firewall
+↓
+Nginx
+↓
+App
+
+ต้องเช็กทุก Layer ที่เกี่ยวข้อง
+68) Inbound vs Outbound
+Inbound:
+traffic เข้ามา server
+
+Outbound:
+server ออกไป service อื่น
+
+บางระบบจำกัดทั้งสองทาง
+69) App Call External API ไม่ได้
+อาจไม่ได้เป็น API ปลายทางพัง
+
+อาจเป็น:
+outbound firewall
+DNS
+proxy
+routing
+
+70) Egress Proxy
+บาง Corporate Network บังคับ Traffic Internet ออกผ่าน Proxy
+
+App ที่ไม่ตั้ง Proxy อาจออก Internet ไม่ได้
+71) HTTP Proxy Variables
+บาง Environment ใช้:
+HTTP_PROXY
+HTTPS_PROXY
+NO_PROXY
+
+ต้องระวัง Internal Hosts ถูกส่งออก Proxy ผิดด้วย
+72) NO_PROXY
+กำหนด Hosts ที่ไม่ควรผ่าน Proxy
+
+เช่น:
+localhost,127.0.0.1,.internal
+
+Config ผิดทำให้ Internal Service Call แปลก ๆ ได้
+73) NAT
+NAT = Network Address Translation
+
+Private Server อาจออก Internet ผ่าน NAT Gateway
+
+ดังนั้น External API เห็น Public IP ของ NAT ไม่ใช่ Private IP ของ Server
+74) IP Whitelist
+Provider อาจ whitelist:
+203.0.113.100
+
+แต่ App ออกผ่าน NAT IP:
+198.51.100.20
+
+Call จะถูก Reject
+
+ต้องรู้ Egress Public IP จริง
+75) Reverse Proxy
+Nginx รับ:
+Client → 443
+
+แล้วส่ง:
+Nginx → 127.0.0.1:3000
+
+มี Connection สองช่วงคนละอัน
+76) Client IP
+App หลัง Proxy อาจเห็น IP ของ Nginx แทน User
+
+จึงมี Headers เช่น:
+X-Forwarded-For
+X-Real-IP
+Forwarded
+
+77) Trust Proxy
+App ต้อง Config ว่า Proxy ไหนเชื่อถือได้
+
+ไม่ควรเชื่อ X-Forwarded-For จาก Internet ทุกคนแบบ Blindly
+
+เพราะ Client ปลอม Header ได้
+78) Protocol Header
+Reverse Proxy อาจส่ง:
+X-Forwarded-Proto: https
+
+ให้ App รู้ว่า Original Request เป็น HTTPS แม้ Proxy → App เป็น HTTP
+79) Bug ถ้า Trust Proxy ผิด
+App อาจคิดว่า Request เป็น HTTP แล้ว Redirect:
+https → proxy → app thinks http → redirects https
+
+เกิด Redirect Loop ได้
+80) Load Balancer Health Check
+LB ติดต่อ App Port เช่น:
+10.0.1.20:3000/health
+
+ดังนั้น App ต้อง bind Interface ที่ LB เข้าถึงได้
+
+ถ้า bind แค่:
+127.0.0.1
+
+LB คนละเครื่องจะเข้าไม่ได้
+81) Nginx เครื่องเดียวกัน vs คนละเครื่อง
+เครื่องเดียว:
+Nginx → 127.0.0.1:3000
+
+ดี
+
+คนละเครื่อง:
+Nginx → 10.0.1.20:3000
+
+App ต้อง Listen Private Interface
+82) localhost ใน Docker
+สำคัญมาก:
+
+Container A:
+localhost
+
+คือ Container A เอง
+
+ไม่ใช่ Host และไม่ใช่ Container B
+83) Docker Service Communication
+มักใช้:
+http://api:3000
+
+ผ่าน Docker Network/Service Name
+
+เราจะลงลึกตอน Docker
+84) localhost ใน Kubernetes ก็คล้ายกัน
+Pod/Container Scope มีรายละเอียดของมันเอง
+
+อย่าคิดว่า localhost หมายถึง Server Physical ทั้งเครื่องเสมอ
+85) DNS ใน Application
+App อาจ resolve Hostname แค่ตอนสร้าง Connection
+
+ถ้า DNS เปลี่ยน แต่ Connection Pool เดิมยังค้าง:
+traffic อาจยังไป old IP
+
+ขึ้นกับ Runtime/Driver
+86) Long-lived Connections
+DB/Redis/HTTP Keep-alive ใช้ Connection เดิมนาน
+
+DNS Change ไม่จำเป็นต้องย้าย Connection ทันที
+
+ต้องเข้าใจตอน Failover
+87) TCP Keep-alive
+ช่วย Detect Dead Connections บางกรณี
+
+แต่อาจใช้เวลานานตาม Config
+
+Application-level timeout ยังสำคัญ
+88) HTTP Keep-Alive
+Reuse TCP Connection หลาย Requests
+
+ลด:
+TCP handshake
+TLS handshake
+
+เพิ่ม Performance
+89) แต่ Connection Pool มี Limit
+ถ้า Pool 10 Connections
+
+แต่มี 100 concurrent Requests:
+90 ต้องรอ
+
+แม้ Network ปกติ
+
+นี่เป็น Application Pool Saturation ไม่ใช่ Firewall
+90) Connection Timeout
+คือเวลารอสร้าง Connection
+
+เช่น:
+connect timeout = 2s
+
+91) Read Timeout
+เชื่อมแล้วแต่รอ Data/Response
+
+เช่น:
+read timeout = 5s
+
+คนละเรื่องกับ Connect Timeout
+92) Example
+API:
+TCP connect 20ms
+response ใช้ 30s
+
+Connect Timeout ไม่ช่วย
+
+ต้องมี Read/Overall Timeout
+93) DNS Timeout
+DNS เองก็อาจช้า/Fail
+
+App อาจดูเหมือน HTTP Timeout ทั้งที่ยังไม่ถึง TCP
+
+Verbose logs/traces ช่วยแยก
+94) traceroute
+ช่วยดู Path ผ่าน Network:
+traceroute example.com
+
+แต่อาจมี Routers ที่ไม่ตอบ ICMP/UDP Probe
+
+จึงไม่ใช่ Truth สมบูรณ์
+95) tracepath
+บาง Linux มี:
+tracepath example.com
+
+ใช้ Debug Path/MTU บางเรื่อง
+96) MTU
+MTU = Maximum Transmission Unit
+
+Packet ใหญ่เกินบาง Path อาจต้อง Fragment หรือเจอปัญหา
+
+โดยทั่วไป Developer ไม่เจอบ่อย แต่ VPN/Cloud Network บางกรณีมี MTU Issue
+97) TLS Connection
+HTTPS เพิ่มขั้น:
+DNS
+↓
+TCP
+↓
+TLS handshake
+↓
+HTTP
+
+ดังนั้น curl -v ช่วยบอกว่า Fail ที่ TLS หรือ HTTP
+98) TLS Error Example
+certificate has expired
+
+หมายถึง TCP ถึงแล้ว แต่ Certificate มีปัญหา
+99) Hostname Mismatch
+Certificate สำหรับ:
+api.example.com
+
+แต่เราเรียก:
+https://203.0.113.20
+
+อาจเจอ Certificate Name Mismatch
+
+นี่ไม่ได้แปลว่า Server พัง
+100) Certificate Chain
+Client ต้อง Trust CA Chain
+
+ถ้า Server ส่ง Intermediate Certificate ไม่ครบ บาง Client อาจ Fail
+101) Internal Self-signed Certificate
+Internal API อาจใช้ Private CA
+
+Client ต้อง Trust CA นั้น
+
+ไม่ควรแก้ทุกอย่างด้วย:
+verify=false
+
+ถาวร
+102) DNS Round Robin
+Domain อาจ resolve หลาย IP:
+203.0.113.10
+203.0.113.11
+203.0.113.12
+
+Client เลือกหนึ่ง IP
+
+นี่เป็น Load Distribution แบบง่าย
+103) แต่ DNS ไม่ Health Check แบบทันทีเสมอไป
+ถ้า IP หนึ่งตาย แต่ยัง Cache อยู่ Client อาจยังไปหาได้
+
+Load Balancer มักเหมาะกว่าสำหรับ Health-aware Routing
+104) IPv4 vs IPv6
+Hostname อาจมีทั้ง:
+A
+AAAA
+
+บาง Client เลือก IPv6 ก่อน
+
+ถ้า IPv6 Config พังอาจเกิด Connection Delay แปลก ๆ
+105) Test IPv4
+curl -4 https://example.com
+
+IPv6:
+curl -6 https://example.com
+
+ช่วยแยกปัญหา
+106) Port Scan ของเครื่องตัวเอง
+ss ดีกว่า scan ตัวเองหลายกรณี เพราะเห็น Process ที่ Listen จริง
+
+ไม่ต้องใช้ Scanner โดยไม่จำเป็น
+107) Application Bind Error
+ถ้า Node start:
+EADDRNOTAVAIL
+
+อาจกำลัง Bind IP ที่ไม่มีอยู่บนเครื่อง
+
+เช่น Config เก่า:
+10.0.1.50
+
+แต่เครื่องใหม่ IP เป็น:
+10.0.1.60
+
+108) EADDRINUSE
+Port ถูกใช้อยู่
+
+เช็ก:
+ss -lntp | grep :3000
+
+109) ECONNREFUSED
+Target ปฏิเสธ Connection
+
+มัก:
+service down
+wrong port
+wrong bind
+
+110) ETIMEDOUT
+Connection/Operation timeout
+
+ต้องแยกว่า:
+connect timeout
+read timeout
+overall timeout
+
+111) ENOTFOUND
+Runtime บางตัวใช้เมื่อ DNS หา Host ไม่เจอ
+
+เช่น Node:
+getaddrinfo ENOTFOUND api.internal
+
+Root Cause อยู่ DNS/Hostname
+112) ECONNRESET
+Connection ถูก Reset หลังเปิดแล้ว
+
+อาจเกิดจาก:
+remote server
+proxy
+firewall
+application crash
+
+ต้องดู Log ทั้งสองฝั่ง
+113) Broken pipe
+Process พยายามเขียน Connection ที่อีกฝั่งปิดแล้ว
+
+อาจเกิดจาก Timeout Mismatch
+114) Timeout Mismatch
+ตัวอย่าง:
+Client timeout = 5s
+Nginx = 60s
+App = 120s
+
+Client เลิกตอน 5s
+
+App ยังทำงานอีก 115s
+
+เปลือง Capacity
+115) Deadline Hierarchy
+ควรคิดประมาณ:
+DB/API call timeout
+<
+app request timeout
+<
+proxy timeout
+<
+client tolerance
+
+ไม่ใช่กฎตายตัว แต่ต้องสอดคล้อง
+116) DB Connectivity Troubleshooting
+App ต่อ MySQL ไม่ได้
+
+ไล่:
+1 hostname correct?
+2 DNS resolve?
+3 route available?
+4 port 3306 reachable?
+5 MySQL listening?
+6 firewall allows?
+7 TLS required?
+8 credentials valid?
+9 DB user allowed from source host?
+
+117) MySQL Host Permission
+MySQL User อาจมี Host Scope เช่น:
+'app'@'10.0.%'
+
+Network ถึงแต่ Login ยัง Fail เพราะ DB Authorization
+
+นี่อยู่ Layer หลัง TCP
+118) PostgreSQL คล้ายกัน
+ยังมี:
+pg_hba.conf
+
+ควบคุม Client Authentication/Network Scope เพิ่ม
+
+ดังนั้น Port Open ไม่พอ
+119) Redis Connectivity
+ไล่:
+DNS
+port 6379
+bind config
+protected mode
+ACL/auth
+TLS
+
+120) External API Troubleshooting
+เช่น Payment API
+curl -v https://provider.example.com
+
+เช็ก:
+DNS
+TLS
+response status
+
+จากเครื่อง Server จริง
+
+สำคัญเพราะ Laptop กับ Production Network ไม่เหมือนกัน
+121) “เครื่องฉันเรียกได้” ไม่ได้แปลว่า Production เรียกได้
+เพราะ:
+different DNS
+different outbound IP
+firewall
+proxy
+certificate store
+
+122) Test from Correct Origin
+ต้อง Test จาก:
+server/container/pod
+
+ที่ App รันจริง
+
+ไม่ใช่แค่ Laptop
+123) Multi-server Debug
+App A เรียกได้ แต่ App B ไม่ได้
+
+เปรียบเทียบ:
+DNS config
+route
+firewall
+env
+certificate
+proxy
+
+อาจมี Configuration Drift
+124) Configuration Drift
+Server หลายเครื่อง Config ไม่เหมือนกันโดยไม่ตั้งใจ
+
+ทำให้ Bug เกิดเฉพาะบาง Instance
+
+นี่เป็นเหตุผลของ IaC/Container ที่จะเรียนต่อ
+125) Load Balancer “บางครั้งเข้าได้ บางครั้งไม่ได้”
+ถ้ามี 3 Instances:
+A healthy
+B broken
+C healthy
+
+LB Round Robin
+
+User จะรู้สึก:
+บาง request success
+บาง request fail
+
+ต้องตรวจแต่ละ Instance
+126) Sticky Session อาจซ่อนปัญหา
+User A ติด Server A ปกติ
+
+User B ติด Server B เสีย
+
+ผล Report จาก Users ไม่เหมือนกัน
+127) Health Check ต้องตรวจสิ่งที่เหมาะ
+ถ้า Health endpoint ตอบ 200 ทั้งที่ App ต่อ DB ไม่ได้
+
+LB ยังส่ง Requestเข้า Instance ที่ใช้การไม่ได้
+
+Readiness ต้องออกแบบดี
+128) แต่ Health Check อย่าลึกจนทำ Dependency ล่มหนักกว่าเดิม
+ถ้า LB ยิงทุก 1 sec และ Health Query DB หนัก ๆ:
+health checks themselves create load
+
+ต้องเบาและสมดุล
+129) DNS Health
+ถ้า DNS Server ช้า ทุก Service-to-service Call ที่ใช้ Hostnameอาจช้า
+
+จึงเป็น Shared Dependency สำคัญ
+130) DNS Caching ฝั่ง Runtime
+บาง Runtime Cache DNS ต่างกัน
+
+Long-lived Applications ต้องเข้าใจ Driver/Agent Behavior เมื่อมี Failover
+131) Split-horizon DNS
+Hostname เดียวอาจ Resolve ต่างกันตามว่าอยู่ Internal หรือ External Network
+
+เช่น:
+api.example.com
+
+จาก Internet:
+public IP
+
+จาก VPC:
+private IP
+
+นี่เป็น Intentional Design ได้
+132) Hairpin Routing
+Internal Service เรียก Public Domain ของตัวเอง:
+App → Internet/LB → กลับเข้า App
+
+อาจเกิด Latency/Cost/Firewall Complexity
+
+บางระบบใช้ Internal DNS เพื่อหลีก
+133) Service Discovery
+ในระบบหลาย Services ไม่ควร Hardcode IP
+
+ใช้:
+DNS
+service registry
+platform service name
+
+เพราะ Instances เปลี่ยนได้
+134) DNS vs Service Discovery
+DNS เองก็เป็นรูปแบบหนึ่งของ Service Discovery
+
+ใน Kubernetes เช่น Service Name resolve ผ่าน Cluster DNS
+135) Reverse DNS
+IP → Hostname
+
+ไม่จำเป็นกับ App ส่วนใหญ่ แต่บาง Mail/Security Systems ใช้
+136) /etc/nsswitch.conf
+Linux กำหนดลำดับการหา Host/User ผ่าน NSS
+
+เช่น:
+hosts: files dns
+
+หมายถึงดู /etc/hosts ก่อน DNS
+137) Port Forwarding
+SSH สามารถ Forward Port ได้
+
+เช่น Local Tunnel ไป DB
+
+Concept:
+Laptop localhost:3307
+↓ SSH
+Server
+↓ DB:3306
+
+ใช้ Admin Access ได้ดี
+138) ทำไม Tunnel ดีกว่าเปิด DB Public บางกรณี
+DB ไม่ต้อง expose Internet
+
+Admin เข้าผ่าน SSH/VPN แล้ว Tunnel เข้า Private DB
+
+ลด Attack Surface
+139) SSH Local Forward Example
+Conceptually:
+ssh -L 3307:db.internal:3306 bastion
+
+จากนั้น Client ใช้:
+localhost:3307
+
+ผ่าน Tunnel
+140) อย่าสับสน Localhost ฝั่ง Laptop กับ Server
+ใน SSH Tunnel:
+localhost:3307
+
+อยู่ Laptop
+
+จาก Bastion ฝั่ง Remote ค่อยไป:
+db.internal:3306
+
+141) Reverse Proxy vs Forward Proxy
+Reverse Proxy:
+client → proxy → servers
+
+เช่น Nginx หน้า App
+
+Forward Proxy:
+clients → proxy → internet
+
+เช่น Corporate Proxy
+
+คนละทิศทาง
+142) NAT vs Proxy
+NAT ทำระดับ Network Address Translation
+
+Proxy ทำระดับ Application/Connection มากกว่า
+
+อย่าสับสน
+143) CDN คือ Reverse Proxy ระดับ Edge แบบหนึ่งในเชิง Architecture
+User คุยกับ CDN ก่อน
+
+CDN ค่อยติดต่อ Origin
+
+จึงมี Network Hop เพิ่ม
+144) Client IP ผ่านหลาย Proxies
+เช่น:
+Browser
+→ Cloudflare
+→ Load Balancer
+→ Nginx
+→ App
+
+ต้องตั้ง Trusted Proxy Chain ให้ถูก ไม่งั้น Logging/Rate Limit IP ผิด
+145) Rate Limiting by IP Caveat
+ถ้า App เห็นทุก Request เป็น IP ของ Nginx:
+127.0.0.1
+
+Rate Limiter อาจคิด User ทุกคนเป็นคนเดียว
+
+ต้องอ่าน Forwarded IP อย่างปลอดภัย
+146) DNS Cutover
+ย้าย Server:
+old IP → new IP
+
+ควร:
+ลด TTL ก่อน
+deploy new
+test with --resolve
+change DNS
+monitor both
+
+147) อย่าปิด Old Server ทันที
+เพราะ DNS Cache บางส่วนอาจยังชี้ Old IP
+
+ควรมี Overlap Period ตาม Requirement
+148) Blue/Green Deployment ผ่าน Routing
+Blue:
+old environment
+
+Green:
+new environment
+
+ทดสอบ Green แล้วเปลี่ยน LB/DNS Routing
+
+จะลงลึกใน Deployment ภายหลัง
+149) Packet Path Mental Model
+เวลา Server A ติดต่อ B:
+App
+↓
+DNS resolves B
+↓
+kernel chooses route
+↓
+source interface/IP
+↓
+firewall
+↓
+network
+↓
+B firewall
+↓
+B listening port
+↓
+application protocol
+
+จุดใดจุดหนึ่ง Fail ได้
+150) Troubleshooting Pattern: “ต่อ DB ไม่ได้”
+เริ่ม:
+dig db.internal
+
+ถ้า Resolve ได้
+
+ต่อ:
+nc -zv db.internal 3306
+
+151) ถ้า nc Fail
+ตรวจ:
+DB service listening?
+bind address?
+firewall?
+security group?
+route?
+
+152) ถ้า nc Success
+Network TCP ปกติ
+
+ไปดู:
+DB credentials
+TLS
+user host permission
+max connections
+database name
+
+153) Troubleshooting Pattern: API 502
+Test:
+curl http://127.0.0.1:3000
+
+ถ้า Fail:
+app problem
+
+ถ้าผ่าน:
+Nginx/proxy layer problem
+
+154) ต่อด้วย
+ss -lntp | grep :3000
+
+เช็ก Bind
+155) Test Nginx Local
+curl -H "Host: example.com" http://127.0.0.1
+
+ถ้าผ่าน Local แต่ Public Domain ไม่ผ่าน:
+DNS/LB/CDN/firewall/TLS
+
+156) Troubleshooting Pattern: Domain ใช้ไม่ได้ แต่ IP ใช้ได้
+มีแนวโน้ม:
+DNS
+TLS hostname
+virtual host
+
+ไม่ใช่ Network Reachability อย่างเดียว
+157) Troubleshooting Pattern: IP ใช้ได้ Port 443 แต่ HTTPS Fail
+ดู:
+TLS certificate
+SNI
+certificate chain
+hostname mismatch
+
+158) Troubleshooting Pattern: เชื่อมได้แต่ช้ามาก
+ต้องแยก Latency:
+DNS time
+connect time
+TLS time
+server processing time
+download time
+
+159) curl Timing
+สามารถใช้ Format/Verbose เพื่อวัดช่วงต่าง ๆ ได้
+
+แนวคิดคือดูว่า Delay อยู่:
+DNS?
+TCP?
+TLS?
+TTFB?
+
+อย่าสรุปว่า API ช้าทันที
+160) TTFB
+TTFB = Time To First Byte
+
+ระยะตั้งแต่ Request จนเริ่มได้ Response
+
+สูงอาจมาจาก:
+backend processing
+DB
+queueing
+proxy
+network
+
+161) Latency vs Throughput
+Network ช้าอาจไม่ใช่ Bandwidth น้อย
+
+Latency:
+เวลา round trip
+
+Throughput:
+ปริมาณข้อมูลต่อเวลา
+
+คนละ Metric
+162) High Bandwidth แต่ High Latency
+สามารถ Download ไฟล์ใหญ่เร็วได้ แต่ API Chatty หลาย Round-trips ยังช้า
+
+สำคัญกับ Multi-region Systems
+163) Connection Pool ช่วยลด Handshake
+Reuse Connections ลด:
+DNSบางส่วน
+TCP handshake
+TLS handshake
+
+แต่ Pool ต้องมี Capacity/Timeout ที่เหมาะ
+164) Pool Exhaustion
+ถ้า Connections ถูกใช้อยู่ทั้งหมด:
+requests รอ pool
+
+อาจดูเหมือน Network Timeout ทั้งที่ Network ปกติ
+
+ต้องดู App Metrics
+165) Network Troubleshooting อย่าหยุดที่ OS Layer
+เมื่อ TCP ผ่าน ยังมี:
+protocol
+auth
+business app
+
+ต้องไล่ต่อ
+166) Security Group Example
+App:
+10.0.1.20
+
+DB:
+10.0.2.20:3306
+
+DB Firewall ควร Allow:
+source = app subnet/security group
+port = 3306
+
+ไม่จำเป็นต้อง Internet ทั้งโลก
+167) Source IP สำคัญ
+Firewall เห็น Source IP หลัง NAT/Proxy อาจไม่ใช่ IP ที่เราคิด
+
+เวลา Whitelist ต้องรู้ Packet Path จริง
+168) Multiple NICs
+Server อาจมีหลาย Interfaces
+
+Routing อาจเลือก Source IP คนละตัวกับที่ Provider Whitelist
+
+Advanced Routing อาจต้องกำหนด
+169) Asymmetric Routing
+Request ไป Path หนึ่ง แต่ Response กลับอีก Path
+
+Firewall/Stateful Device บางตัวอาจ Drop
+
+เจอได้ใน Network ซับซ้อน
+170) Stateful Firewall
+Firewall จดจำ Connection State
+
+เช่น Request ออก:
+A → B
+
+Response:
+B → A
+
+ถูก Allow โดย Connection Tracking
+171) Ephemeral Ports
+Client ที่ต่อออกจะใช้ Source Port ชั่วคราว เช่น:
+10.0.1.20:52341
+→
+DB:3306
+
+Port 52341 เป็น Ephemeral Port
+172) Ephemeral Port Exhaustion
+ถ้าสร้าง Connections ใหม่มหาศาลและไม่ reuse อาจหมดช่วง Ports ชั่วคราว
+
+เกิด Connect Fail/Latency ได้ใน Scale สูง
+173) Keep-alive ลด Connection Churn
+ช่วยลด:
+ephemeral ports
+handshake overhead
+TIME_WAIT volume
+
+174) แต่ Keep-alive Too Long ก็มี Cost
+Connections กิน:
+file descriptors
+memory
+server slots
+
+ต้อง Balance
+175) DNS Failover ไม่ใช่ Immediate
+เพราะ:
+TTL
+client cache
+connection reuse
+
+ถ้าต้อง Failover เร็วมากมักใช้ Load Balancer/Service Mesh/Platform routing
+176) Server Name vs IP Stability
+Cloud VM อาจเปลี่ยน IP เมื่อ recreate
+
+อย่า Hardcode IP ใน Code ถ้า Infrastructure ไม่รับประกัน Stable IP
+
+ใช้ Hostname/Elastic IP/Load Balancer
+177) /etc/hosts ใช้ Production ได้ไหม
+ใช้ได้บางกรณี แต่ manual management หลาย Servers เสี่ยง Configuration Drift
+
+DNS/Service Discovery มักดีกว่าเมื่อ Scale
+178) Health Check DNS Name
+Internal Service Hostname ควร resolve จากทุก Environment ที่ต้องใช้
+
+ถ้า UAT ใช้ DNS Prod ผิด อาจยิงข้อมูลผิด Environment
+
+จึงต้องแยก Config ชัด
+179) Environment Network Isolation
+ควรแยก:
+dev
+uat
+prod
+
+Network/Credentials ตามความเหมาะสม
+
+ลดโอกาส UAT App แตะ Prod DB
+180) Private DNS
+แต่ละ Environment อาจมี:
+db.prod.internal
+db.uat.internal
+
+ช่วยลด Confusion
+181) Network Security ไม่ควรพึ่งชื่อ Host อย่างเดียว
+DNS Name ไม่ใช่ Authorization
+
+ต้องมี:
+firewall
+TLS/auth
+credentials
+
+182) DNS Spoofing / Poisoning
+ถ้า DNS ถูกควบคุมผิด Traffic อาจถูกส่งไป Server ปลอม
+
+TLS Certificate Validation ช่วยอีกชั้นสำหรับ HTTPS
+
+นี่คือ Defense in Depth
+183) Service-to-service Authentication
+ถึง Network Private ก็ยังควรพิจารณา Auth ระหว่าง Services สำหรับระบบสำคัญ
+
+เช่น:
+API token
+mTLS
+service identity
+
+จะลงใน Security Topic ภายหลัง
+184) mTLS
+Mutual TLS
+
+ทั้ง Client และ Server มี Certificate เพื่อยืนยันตัวกันทั้งสองฝั่ง
+
+ใช้ใน Internal Services บางระบบ
+185) Connectivity Debugging Order
+แนะนำลำดับ:
+1 hostname/config
+2 DNS
+3 route/IP
+4 listening port
+5 firewall
+6 TCP connectivity
+7 TLS
+8 authentication
+9 application protocol
+10 business logic
+
+186) ทำไมลำดับนี้ดี
+เพราะแต่ละ Step ตัดความเป็นไปได้ออกทีละ Layer
+
+ไม่ต้องแก้ Password ทั้งที่ DNS ผิด
+187) Read-only Investigation
+Commands ส่วนใหญ่:
+ip a
+ip route
+ss -lntp
+dig
+curl
+nc
+
+เป็น Investigation ก่อนเปลี่ยน Config
+
+เหมาะกับ Production
+188) อย่า Disable Firewall เพื่อ “ลอง”
+การทำ:
+ปิด firewall ทั้งหมด
+
+อาจทำให้ Attack Surface เปิด
+
+ดีกว่าตรวจ Rule แล้วเปิดเฉพาะที่จำเป็น
+189) อย่า Bind Database 0.0.0.0 เพื่อแก้ต่อไม่ได้แบบสุ่ม
+อาจ expose DB สู่ Network กว้างขึ้น
+
+ต้องเข้าใจ:
+ใครต้องเชื่อม?
+ผ่าน interface ไหน?
+firewall allow ใคร?
+
+190) อย่าแก้ TLS ด้วย verify=false ถาวร
+แค่ซ่อน Certificate Problem และเปิด MITM Risk
+
+แก้ CA/Certificate ให้ถูก
+191) อย่าใช้ IP ตรงเพราะ DNS พังแล้วจบ
+IP อาจเปลี่ยน
+
+และ HTTPS/SNI อาจต้อง Hostname
+
+ควรแก้ DNS Root Cause
+192) Production Network Checklist
+ถาม:
+service bind IP ไหน?
+port อะไร?
+host firewall เปิดไหม?
+cloud firewall เปิดไหม?
+DNS ชี้ไหน?
+route ถูกไหม?
+
+193) ต่ออีก
+TLS certificate valid ไหม?
+proxy headers ถูกไหม?
+timeout เท่าไร?
+pool saturated ไหม?
+source IP ที่ provider เห็นคืออะไร?
+
+194) Debug Example — Redis ต่อไม่ได้
+App error:
+ECONNREFUSED 10.0.2.10:6379
+
+ทำ:
+nc -zv 10.0.2.10 6379
+
+ถ้า Refused:
+Redis down
+wrong port
+bind config
+
+มีแนวโน้ม
+195) ถ้า Timeout
+ดู:
+route
+security group
+firewall
+network ACL
+
+มากขึ้น
+196) ถ้า TCP Success แต่ App Error NOAUTH
+Network ปกติ
+
+ปัญหาคือ:
+Redis authentication
+
+นี่คือ Layered Debugging
+197) Debug Example — API ENOTFOUND
+getaddrinfo ENOTFOUND api.foo.internal
+
+ตรวจ:
+dig api.foo.internal
+cat /etc/hosts
+
+ไม่ต้องเช็ก Port ก่อนเพราะยังไม่มี IP
+198) Debug Example — API Timeout
+DNS resolve
+
+nc port 443 ผ่าน
+
+curl -v ต่อ TLS ได้ แต่รอ Response 30 sec
+
+ปัญหาอยู่:
+server/application/downstream
+
+ไม่ใช่ Firewall แล้ว
+199) Debug Example — Domain บาง Serverใช้ได้
+Server A:
+dig api.internal
+
+ได้ 10.0.1.5
+
+Server B ได้ 10.0.9.5
+
+อาจมี:
+DNS config mismatch
+split DNS
+stale hosts entry
+
+ต้องเทียบ Environment
+200) Mental Model ที่ควรจำ
+เวลา Network มีปัญหา อย่าถามแค่:
+“Internet ใช้ได้ไหม?”
+
+แต่ให้แยก:
+DNS resolve ได้ไหม?
+IP route ถึงไหม?
+port เปิดไหม?
+process listen ไหม?
+TLS ผ่านไหม?
+protocol/auth ผ่านไหม?
+
+201) อีก Mental Model
+Connection refused
+→ Host/port reached but no listener/reject
+
+Timeout
+→ packet/response not arriving in time
+
+ENOTFOUND
+→ DNS/name resolution
+
+401/403
+→ connectivity works, auth/authz layer
+
+500
+→ HTTP reached application, app errored
+
+ช่วยหา Layer เร็วมาก
+202) Production Troubleshooting Principle
+Error Message เป็นหลักฐานของ Layer ที่ Request เดินทางมาถึงแล้ว
+
+เช่นได้ 401 หมายความว่า DNS/TCP/TLS/HTTP ผ่านไปเยอะแล้ว ไม่ควรกลับไปแก้ Firewall ก่อน
+203) Request Path ต้องรู้จริง
+สำหรับระบบ Production ควรวาดได้ว่า:
+Browser
+→ CDN
+→ LB
+→ Nginx
+→ Next.js
+→ Laravel
+→ DB
+
+และรู้ว่าแต่ละ Hop:
+hostname
+IP/network
+port
+protocol
+timeout
+
+อะไร
+204) Documentation
+ควรมีข้อมูลอย่างน้อย:
+service
+hostname
+port
+public/private
+owner
+dependency
+
+ช่วย Incident Response มาก
+สรุป 6.5
+Linux Networking Troubleshooting ที่ดีคือการไล่เป็น Layer:
+Hostname
+↓
+DNS
+↓
+IP / Routing
+↓
+Firewall
+↓
+Listening Port
+↓
+TCP
+↓
+TLS
+↓
+Authentication
+↓
+Application
+
+Tools ที่ควรใช้คล่อง:
+ip a
+ip route
+ss -lntp
+dig
+ping
+nc
+curl
+
+และจำ Error Pattern สำคัญ:
+ENOTFOUND
+→ DNS
+
+Connection refused
+→ ไม่มี listener / wrong port / explicit reject
+
+Timeout
+→ route/firewall/network/slow response
+
+401/403
+→ network ใช้งานได้แล้ว แต่ auth/authz มีปัญหา
+
+502
+→ proxy ติดต่อ upstream มีปัญหา
+
+หลักสำคัญที่สุดคือ:
+อย่าแก้ Connectivity Problem ด้วยการเปิดทุก Port, ปิด Firewall หรือ Disable TLS Verification แต่ให้ระบุว่า Fail ที่ Network Layer ไหน แล้วแก้เฉพาะจุด
+
+
+6.6 Nginx Fundamentals, Reverse Proxy & Web Server Configuration แบบลงลึก
+Nginx เป็นหนึ่งใน Component ที่พบบ่อยมากใน Production เพราะมันสามารถทำหน้าที่เป็น Web Server, Reverse Proxy, TLS Termination, Static File Server และ Load Balancer ได้ในตัวเดียว
+
+Mental Model:
+Client
+↓
+Nginx
+├→ Static files
+├→ Next.js / Node.js
+├→ PHP-FPM / Laravel
+└→ Other upstream services
+
+1) Nginx คืออะไร
+Nginx อ่านว่าโดยทั่วไป:
+Engine-X
+
+หน้าที่หลักที่เราจะใช้คือ:
+รับ HTTP/HTTPS
+↓
+ดูว่า request ไปทางไหน
+↓
+serve file หรือ proxy ต่อ
+
+เช่น:
+https://example.com/
+→ Next.js
+
+https://example.com/api/
+→ Laravel
+
+https://example.com/assets/
+→ static files
+
+2) Nginx อยู่ตรงไหนใน Architecture
+ตัวอย่าง:
+Internet
+↓
+Cloudflare
+↓
+Nginx :443
+├→ Next.js :3000
+└→ Laravel / PHP-FPM
+
+Nginx เป็น Gateway ก่อน Request เข้า Application
+3) ทำไมไม่ให้ Browser เข้า Node.js ตรง ๆ
+สมมติ Node รัน:
+127.0.0.1:3000
+
+Browser เข้า:
+https://example.com
+
+Nginx รับ Port 443 แล้วค่อยส่งให้ Node
+
+ข้อดี:
+TLS
+routing
+logging
+compression
+static files
+request limits
+multiple applications
+
+4) Nginx Configuration อยู่ไหน
+บน Ubuntu/Debian มักเจอ:
+/etc/nginx/
+
+เช่น:
+/etc/nginx/nginx.conf
+/etc/nginx/sites-available/
+/etc/nginx/sites-enabled/
+
+แต่ Distribution อื่นอาจจัดต่างกัน
+5) nginx.conf
+เป็น Main Configuration
+
+โครงสร้างประมาณ:
+events {
+}
+
+http {
+    ...
+}
+
+ภายใน http มัก include config อื่น
+6) sites-available
+มักเก็บ Config ของแต่ละ Website
+
+เช่น:
+/etc/nginx/sites-available/example.com
+
+7) sites-enabled
+มักเป็น Symlink ไปยัง Site ที่เปิดใช้งานจริง
+sites-available/example.com
+        ↓
+sites-enabled/example.com
+
+8) Symlink
+สร้างได้ประมาณ:
+sudo ln -s \
+/etc/nginx/sites-available/example.com \
+/etc/nginx/sites-enabled/example.com
+
+แต่ต้องระวัง duplicate config
+9) Basic Server Block
+ตัวอย่าง:
+server {
+    listen 80;
+    server_name example.com www.example.com;
+
+    location / {
+        return 200 "Hello";
+    }
+}
+
+10) server
+server {} คือ Virtual Server
+
+ใช้บอกว่า:
+domain/port แบบนี้
+→ ใช้ config ชุดนี้
+
+11) listen
+เช่น:
+listen 80;
+
+หมายถึงรับ HTTP Port 80
+
+HTTPS:
+listen 443 ssl;
+
+12) IPv6
+อาจเจอ:
+listen [::]:80;
+
+สำหรับ IPv6
+13) server_name
+เช่น:
+server_name example.com www.example.com;
+
+Nginx ใช้ Hostname เพื่อเลือก Server Block
+14) หลาย Domain บน IP เดียว
+เช่น:
+203.0.113.10
+
+มี:
+example.com
+admin.example.com
+api.example.com
+
+Nginx เลือก Config จาก server_name
+15) Virtual Hosting
+นี่เรียกว่า:
+Name-based Virtual Hosting
+
+หนึ่ง IP รองรับหลาย Websites ได้
+16) Default Server
+สามารถกำหนด:
+listen 80 default_server;
+
+ถ้า Hostname ไม่ Match Server Block อื่น จะเข้า Default
+17) ทำไม Default Server สำคัญ
+ถ้าไม่มีการจัดชัด Nginx อาจส่ง Request Unknown Host ไป Site แรกที่ Load
+
+อาจสับสนเวลา Debug
+18) location
+ใช้ Match Request URI
+
+เช่น:
+location / {
+}
+
+Match ทุก Path ที่เริ่มด้วย /
+19) Example
+location /api/ {
+    ...
+}
+
+จะจับ:
+/api/users
+/api/orders
+/api/products
+
+20) Reverse Proxy
+ตัวอย่าง:
+location / {
+    proxy_pass http://127.0.0.1:3000;
+}
+
+Flow:
+Browser
+→ Nginx :443
+→ Node :3000
+
+21) proxy_pass
+หมายถึงส่ง Request ต่อไปยัง HTTP Upstream
+
+เช่น:
+proxy_pass http://127.0.0.1:3000;
+
+22) Upstream คืออะไร
+Upstream คือ Service ที่อยู่หลัง Nginx
+
+เช่น:
+Node.js
+Next.js
+Laravel API
+another Nginx
+microservice
+
+23) Header ที่ควรส่งต่อ
+ตัวอย่างที่พบบ่อย:
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+
+24) ทำไมต้อง Host
+Application อาจใช้ Hostname เพื่อ:
+routing
+URL generation
+tenant detection
+
+25) X-Real-IP
+ส่ง Client IP ที่ Nginx เห็น
+
+แต่ถ้ามี CDN/LB อยู่หน้า Nginx ต้องตั้ง trusted proxy เพิ่ม ไม่เช่นนั้นอาจเห็น IP ของ Proxy แทน User
+26) X-Forwarded-For
+ใช้เก็บ Proxy Chain
+
+เช่น:
+203.0.113.50, 10.0.1.10
+
+27) อย่าเชื่อ X-Forwarded-For ทุกกรณีแบบ Blindly
+Client สามารถส่ง Header นี้เองได้
+
+Nginx/App ต้องรู้ว่า Proxy ไหนเชื่อถือได้
+28) X-Forwarded-Proto
+บอกว่า Original Request เป็น:
+http
+หรือ
+https
+
+สำคัญถ้า:
+Browser --HTTPS→ Nginx
+Nginx --HTTP→ App
+
+29) Redirect Loop
+ถ้า App ไม่รู้ว่า Original เป็น HTTPS
+
+มันอาจ:
+เห็น HTTP
+→ redirect HTTPS
+
+แต่ทุก Request ผ่าน Proxy เป็น HTTP ด้านใน
+
+ทำให้ Loop
+
+การส่ง X-Forwarded-Proto + trust proxy ช่วยได้
+30) Next.js Example
+server {
+    listen 80;
+    server_name example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+31) Node ควร Bind ไหน
+ถ้า Nginx กับ Node อยู่เครื่องเดียว:
+127.0.0.1:3000
+
+มักเหมาะกว่า:
+0.0.0.0:3000
+
+เพราะไม่ expose Node Port สู่ Network โดยไม่จำเป็น
+32) Nginx กับ App คนละเครื่อง
+ต้องใช้ Private IP:
+proxy_pass http://10.0.1.20:3000;
+
+และ App ต้อง bind Interface ที่เข้าถึงได้
+33) Multiple Upstreams
+สามารถประกาศ:
+upstream app_backend {
+    server 10.0.1.20:3000;
+    server 10.0.1.21:3000;
+}
+
+แล้ว:
+proxy_pass http://app_backend;
+
+34) Nginx Load Balancer
+Architecture:
+             ┌→ App 1
+Nginx ───────┼→ App 2
+             └→ App 3
+
+โดย Default มักกระจายแบบ Round Robin
+35) Weighted Backend
+เช่น:
+upstream app_backend {
+    server 10.0.1.20:3000 weight=3;
+    server 10.0.1.21:3000 weight=1;
+}
+
+Server 1 รับมากกว่า
+36) Static File Server
+Nginx สามารถ serve file ได้โดยตรง
+location /static/ {
+    root /var/www/example;
+}
+
+37) root
+สำคัญมาก
+
+ถ้า:
+location /static/ {
+    root /var/www/example;
+}
+
+Request:
+/static/logo.png
+
+จะหา:
+/var/www/example/static/logo.png
+
+38) alias
+อีก Directive:
+location /uploads/ {
+    alias /data/uploads/;
+}
+
+Request:
+/uploads/a.jpg
+
+จะ map ไป:
+/data/uploads/a.jpg
+
+39) root กับ alias ต่างกัน
+root เอา URI ไปต่อกับ Root Path
+
+alias แทน Location Path ด้วย Directory ที่กำหนด
+
+เป็นจุดที่ Config ผิดกันบ่อย
+40) Static File Permission
+Nginx Worker User ต้องอ่าน File และ Traverse Parent Directories ได้
+
+ถ้าไม่ได้:
+403 Forbidden
+
+หรือ Error ใน Log
+41) index
+กำหนด Default File:
+index index.html index.htm;
+
+Request Directory:
+/
+
+อาจ serve index.html
+42) try_files
+พบบ่อยมาก
+
+เช่น:
+try_files $uri $uri/ /index.html;
+
+ใช้กับ SPA Routing
+43) SPA Example
+Browser Request:
+/profile
+
+ไม่มี /profile เป็น File จริง
+
+จึง fallback:
+/index.html
+
+แล้ว React Router Handle ต่อ
+44) Laravel Front Controller
+Nginx สำหรับ Laravel มักใช้แนวคิด:
+try_files $uri $uri/ /index.php?$query_string;
+
+ถ้า File จริงไม่มี ให้ส่งเข้า index.php
+45) PHP-FPM ต่างจาก proxy_pass
+Nginx ไม่ส่ง PHP ผ่าน HTTP โดยทั่วไป
+
+ใช้:
+FastCGI
+
+ไป PHP-FPM
+46) fastcgi_pass
+ตัวอย่าง:
+fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+
+หรือ TCP:
+fastcgi_pass 127.0.0.1:9000;
+
+47) PHP-FPM Socket
+Unix Socket เช่น:
+/run/php/php8.3-fpm.sock
+
+ใช้คุยภายในเครื่องได้
+48) TCP FastCGI
+ถ้า PHP-FPM อยู่คนละเครื่อง:
+10.0.1.20:9000
+
+ได้เช่นกัน แต่ต้องระวัง Security
+49) PHP Location Example
+Concept:
+location ~ \.php$ {
+    include fastcgi_params;
+    fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+}
+
+50) SCRIPT_FILENAME
+บอก PHP-FPM ว่าต้อง execute PHP File ไหน
+
+Config ผิดอาจเกิด:
+Primary script unknown
+
+หรือ 404/502 บางรูปแบบ
+51) Laravel Nginx Concept
+server {
+    listen 80;
+    server_name api.example.com;
+
+    root /var/www/laravel/public;
+
+    index index.php;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include fastcgi_params;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    }
+}
+
+52) Laravel root ต้องเป็น public
+ไม่ควรชี้:
+/var/www/laravel
+
+ตรง ๆ
+
+ควรชี้:
+/var/www/laravel/public
+
+เพื่อไม่ expose .env, source, vendor ฯลฯ
+53) Security Principle
+Document Root ต้องมีเฉพาะ Files ที่ควร expose Public
+
+นี่สำคัญมาก
+54) ห้าม Serve .env
+ถ้า Web Server Config ผิดแล้ว User ดาวน์โหลด:
+/.env
+
+อาจได้:
+DB password
+API keys
+secrets
+
+Critical Incident
+55) Hidden Files
+อาจ Block Dotfiles เช่น:
+location ~ /\. {
+    deny all;
+}
+
+แต่ต้องระวัง .well-known สำหรับ certificate challenge
+
+Config จริงต้องออกแบบให้เหมาะ
+56) HTTP → HTTPS Redirect
+Server Block:
+server {
+    listen 80;
+    server_name example.com www.example.com;
+
+    return 301 https://example.com$request_uri;
+}
+
+57) 301 vs 308
+ทั้งสองเป็น Permanent Redirect
+
+308 preserve method/body ชัดกว่า
+
+เช่น POST
+
+แต่เลือกตาม Use Case
+58) HTTPS Server
+Concept:
+server {
+    listen 443 ssl;
+    server_name example.com;
+
+    ssl_certificate ...;
+    ssl_certificate_key ...;
+}
+
+59) Certificate
+มี:
+certificate
+private key
+
+Private Key ต้อง Permission เข้ม
+60) TLS Termination
+Nginx รับ HTTPS แล้วส่ง HTTP ไป App:
+Browser HTTPS
+↓
+Nginx
+↓ HTTP localhost
+Node
+
+เรียกว่า TLS Termination
+61) Reverse Proxy Timeout
+Directive เช่น:
+proxy_connect_timeout
+proxy_read_timeout
+proxy_send_timeout
+
+แต่แต่ละตัวคนละความหมาย
+62) proxy_connect_timeout
+เวลารอสร้าง Connection ไป Upstream
+
+เช่น Node Port 3000
+63) proxy_read_timeout
+หลังเชื่อมแล้ว Nginx รอข้อมูลจาก Upstream ได้นานเท่าไร
+
+ถ้า App ทำงาน 120s แต่ timeout 60s:
+504 Gateway Timeout
+
+ได้
+64) อย่าแก้ 504 ด้วยเพิ่ม Timeout อย่างเดียว
+ถ้า API ใช้ 3 นาทีโดยไม่ควร:
+เพิ่ม timeout = ซ่อนปัญหา
+
+ต้องหา Root Cause
+65) Long-running Work
+งานที่ใช้หลายนาทีควรพิจารณา:
+202 Accepted
+↓
+Queue
+↓
+background worker
+
+แทนให้ HTTP รอ
+66) proxy_send_timeout
+เกี่ยวกับเวลาส่ง Request ไป Upstream
+
+สำคัญกับ Upload/Slow Client บางกรณี
+67) Client Timeout vs Proxy Timeout
+ต้องสัมพันธ์กัน
+
+ถ้า Browser timeout 30s แต่ Nginx รอ App 10 นาที:
+User หายแล้ว
+แต่ App ยังทำงาน
+
+เปลือง Capacity
+68) Upload Limit
+Nginx มี:
+client_max_body_size 10M;
+
+ใช้จำกัด Request Body
+69) Error 413
+ถ้า Upload ใหญ่เกิน:
+413 Request Entity Too Large
+
+หรือ Payload Too Large
+
+มักเกิดจาก client_max_body_size
+70) App Limit ก็ต้องตรงกัน
+Nginx:
+20MB
+
+PHP:
+upload_max_filesize=2M
+
+ก็ยัง Upload ไม่ได้
+
+ต้องดูทุก Layer
+71) PHP Upload Limits
+เช่น:
+upload_max_filesize
+post_max_size
+
+PHP Config
+
+Nginx Limit เป็นอีกชั้น
+72) Next.js/Node Body Limits
+Framework/API Parser อาจมี Limit ของตัวเองเช่นกัน
+
+ดังนั้น Upload Flow ต้องดู:
+CDN
+Nginx
+App
+Storage
+
+ทั้งหมด
+73) Request Buffering
+Nginx สามารถ Buffer Request Body ก่อนส่ง Upstream
+
+มีผลกับ:
+large uploads
+streaming
+memory/disk temp
+
+74) Response Buffering
+Nginx อาจ Buffer Response จาก Upstream
+
+เหมาะกับ HTTP ปกติ
+
+แต่ Streaming/SSE ต้องปรับ
+75) SSE
+Server-Sent Events ต้องการ Response Streaming
+
+ถ้า Proxy Buffering:
+events อาจไม่ออก realtime
+
+อาจต้องปิด buffering สำหรับ Location นั้น
+76) WebSocket
+ต้อง Upgrade Connection
+
+Nginx Config ต้องส่ง Headers ที่เหมาะ เช่น concept:
+proxy_http_version 1.1;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection "upgrade";
+
+77) ทำไม WebSocket ต่าง
+HTTP Request ปกติจบ
+
+WebSocket Connection อยู่ยาว
+
+Timeout/Proxy Config จึงต่าง
+78) Next.js Hot Reload vs Production
+WebSocket อาจเจอใน Development HMR
+
+แต่ Production WebSocket ใช้กับ Realtime Application
+
+อย่าสับสนกัน
+79) HTTP/1.1
+Proxy ไป Backend มักใช้:
+proxy_http_version 1.1;
+
+โดยเฉพาะ Keep-alive/WebSocket
+80) HTTP/2
+Nginx สามารถให้ Client ใช้ HTTP/2 บน HTTPS
+
+ลด Connection Overhead/Multi-stream
+
+Config Syntax ขึ้นกับ Version
+81) HTTP/3
+ใช้ QUIC/UDP
+
+CDN/Nginx รุ่นใหม่บางแบบรองรับ
+
+แต่ยังไม่จำเป็นสำหรับพื้นฐานนี้
+82) Compression
+Nginx สามารถเปิด gzip
+
+เช่น:
+gzip on;
+
+ช่วยลดขนาด:
+HTML
+CSS
+JS
+JSON
+
+83) อย่า Compress ทุกอย่าง
+ไฟล์ที่ถูก Compress อยู่แล้ว เช่น:
+JPEG
+MP4
+ZIP
+
+มักไม่คุ้ม
+84) Brotli
+Compression Algorithm ที่มีประสิทธิภาพดีกว่า gzip ในหลาย Content Types
+
+มักใช้ผ่าน CDN/Nginx Module
+85) CDN อาจ Compression ให้แล้ว
+ถ้า Cloudflare/CDN อยู่หน้า Nginx
+
+Edge อาจจัด Compression เอง
+
+ต้องรู้ Layer Responsibility
+86) Cache-Control
+Nginx สามารถเพิ่ม Header:
+Cache-Control
+
+ให้ Browser/CDN Cache
+87) Static Hashed Assets
+เช่น:
+app.abc123.js
+
+Content เปลี่ยนแล้ว Filename เปลี่ยน
+
+จึง Cache นานได้ เช่น:
+1 year + immutable
+
+Conceptually
+88) HTML ไม่ควร Cache แบบเดียวกับ Hashed JS เสมอไป
+เพราะ HTML อาจเปลี่ยนบ่อย
+
+Cache Strategy ต้องแยกตาม Resource
+89) Personalized Response
+เช่น:
+/account
+/profile
+
+ห้าม Public Cache โดยไม่เข้าใจ
+
+อาจทำข้อมูล User รั่ว
+90) Security Headers
+Nginx สามารถเพิ่ม Headers เช่น:
+X-Content-Type-Options
+Referrer-Policy
+Content-Security-Policy
+Strict-Transport-Security
+
+แต่ Header แต่ละตัวต้องเข้าใจผลกระทบ
+91) HSTS
+Strict-Transport-Security
+
+บอก Browser ว่า Domain นี้ต้อง HTTPS
+
+มี Security Benefit
+
+แต่ถ้าตั้งแรงแล้ว HTTPS Config พัง อาจเข้า Site ผ่าน HTTP ไม่ได้จน Policy หมดอายุ
+
+ต้องใช้ระวัง
+92) CSP
+Content Security Policy
+
+ใช้จำกัดว่า Page โหลด:
+scripts
+images
+fonts
+frames
+media
+
+จากที่ไหนได้
+
+ช่วยลด XSS Impact
+
+แต่ Config ผิดสามารถ block resource ของเว็บเอง
+93) MIME Type
+Nginx ส่ง:
+Content-Type
+
+ตาม Extension/Config
+
+ถ้าผิด Browser อาจ block JS/CSS ด้วย Strict MIME Checking
+94) Static File MIME Problem
+ถ้า .js ถูกตอบ:
+text/html
+
+Browser อาจแจ้ง:
+Refused to execute script due to MIME type
+
+บางครั้ง Root Cause คือ File 404 แล้ว fallback HTML
+95) Example
+Request:
+/_next/static/app.js
+
+File ไม่มี
+
+Nginx fallback /index.html
+
+Response:
+text/html
+
+Browser คิดว่าเป็น JS
+
+เกิด MIME Error
+
+ต้องแก้ Routing ไม่ใช่ตั้ง MIME แบบมั่ว
+96) Nginx Access Log
+มักอยู่:
+/var/log/nginx/access.log
+
+เช่น:
+IP
+method
+URI
+status
+bytes
+user-agent
+
+97) Error Log
+/var/log/nginx/error.log
+
+สำคัญมากสำหรับ:
+502
+permission denied
+file not found
+upstream timeout
+
+98) Follow Logs
+sudo tail -f /var/log/nginx/error.log
+
+99) Custom Log Format
+สามารถเพิ่ม:
+request time
+upstream response time
+request id
+forwarded IP
+
+ช่วย Debug Production
+100) $request_time
+เวลาทั้งหมดที่ Nginx ใช้จัดการ Request
+101) $upstream_response_time
+เวลาที่ Upstream ใช้ตอบ
+
+ช่วยแยก:
+Nginx/network ช้า
+หรือ
+App ช้า
+
+102) Example
+request_time = 5.1s
+upstream_response_time = 5.0s
+
+แสดงว่า Backend ใช้เวลาส่วนใหญ่
+103) อีกกรณี
+request_time = 10s
+upstream_response_time = 0.1s
+
+อาจมี:
+slow client
+large response
+network/output issue
+
+ต้องวิเคราะห์ต่อ
+104) Request ID
+Nginx สามารถสร้าง/ส่ง Request ID
+
+เช่น:
+X-Request-ID
+
+แล้ว App log ID เดียวกัน
+
+ช่วย Trace
+105) Nginx Config Test
+ก่อน Reload ต้อง:
+sudo nginx -t
+
+สำคัญมาก
+106) ถ้า Config ถูก
+จะประมาณ:
+syntax is ok
+test is successful
+
+แล้วค่อย:
+sudo systemctl reload nginx
+
+107) อย่า Restart ก่อน Test Config
+ถ้า Config Syntax ผิด
+
+Restart อาจทำ Nginxไม่กลับขึ้น
+
+แต่ Reload หลัง nginx -t ปลอดภัยกว่า
+108) Reload vs Restart
+Reload:
+อ่าน config ใหม่
+รักษา connections เก่าได้ดีกว่า
+
+Restart:
+หยุด process
+start ใหม่
+
+โดยทั่วไปแก้ Config Nginx นิยม Test + Reload
+109) Main Config Include
+ดู Active Config ทั้งหมดได้:
+sudo nginx -T
+
+มีประโยชน์มากเวลาไม่รู้ Config ไหนถูก Include จริง
+110) Duplicate Server Name
+มี Config หลายไฟล์ประกาศ Domain เดียวกัน
+
+อาจเกิด Warning/Behavior สับสน
+
+nginx -T ช่วยหา
+111) location Matching
+Nginx มีหลายชนิด เช่น:
+prefix
+exact
+regex
+
+พื้นฐานต้องรู้ว่าบาง Location Specific กว่าจะชนะ
+112) Exact Match
+location = /health {
+    return 200 "ok";
+}
+
+จับเฉพาะ /health
+113) Prefix
+location /api/ {
+}
+
+จับทุกอย่างใต้ /api/
+114) Regex
+เช่น:
+location ~ \.php$ {
+}
+
+ใช้ Regular Expression
+115) Regex Case-insensitive
+location ~* \.(jpg|png|gif)$ {
+}
+
+~* ไม่สน case
+116) Location Matching Config ผิด
+อาจทำให้:
+/api
+
+ไป Static Handler แทน API
+
+หรือ PHP Source ถูก Serve ผิด
+
+ต้องระวัง Order/Semantics
+117) Trailing Slash กับ proxy_pass
+จุดนี้สำคัญ
+
+ตัวอย่างสอง Config อาจ Rewrite Path ต่างกัน:
+location /api/ {
+    proxy_pass http://backend;
+}
+
+กับ:
+location /api/ {
+    proxy_pass http://backend/;
+}
+
+Slash ท้ายมีผลต่อ URI Mapping
+118) Example Concept
+Request:
+/api/users
+
+บาง Config ส่ง Upstream เป็น:
+/api/users
+
+บางแบบเป็น:
+/users
+
+ต้องรู้ Intent
+119) เวลามี 404 หลัง Proxy
+ตรวจ:
+Nginx location
+proxy_pass trailing slash
+upstream route
+
+ก่อนแก้ Backend Route
+120) Rewrite
+Nginx สามารถ Rewrite URI ได้
+
+แต่ถ้า Rewrite ซับซ้อนมาก Debug ยาก
+
+ควรเก็บ Routing Simple ถ้าเป็นไปได้
+121) return
+ใช้ตอบ/redirect ได้ง่าย:
+return 301 https://example.com$request_uri;
+
+มักชัดกว่า Rewrite สำหรับ Simple Redirect
+122) Serving React SPA
+ตัวอย่าง:
+root /var/www/app/dist;
+
+location / {
+    try_files $uri $uri/ /index.html;
+}
+
+123) API กับ SPA ต้องแยก
+ถ้ามี:
+/api
+
+ต้อง define API Location ก่อน/ให้ match ถูก
+
+ไม่งั้น API 404 อาจ fallback index.html
+
+แล้ว Frontend ได้ HTML แทน JSON
+124) Symptom
+Frontend:
+Unexpected token '<'
+
+ตอน parse JSON
+
+เพราะ Response จริงเป็น:
+<!DOCTYPE html>
+
+มักเกิด API Route ถูก SPA Fallback
+125) Nginx Static + Next.js
+Next.js Production ปกติให้ Next Server handle หลายอย่างเอง
+
+ไม่ควรสุ่ม Serve /_next จาก Directory ถ้า Build/Deployment Model ไม่ตรง
+
+ต้องดู Deployment Strategy
+126) Next.js Standalone
+Next.js สามารถ build แบบ Standalone ในบาง Architecture
+
+แล้วรัน Node Server ที่มี Required Files
+
+Nginx Proxy ต่อ
+127) Upload Static Media
+ถ้า User Upload File
+
+ไม่ควรฝากไว้ Local Server เมื่อมีหลาย Instances ถ้าไม่มี Shared Storage
+
+Nginx ไม่แก้เรื่อง Data Consistency นี้
+
+ใช้ Object Storage/Shared Volume ตาม Architecture
+128) Reverse Proxy Cache
+Nginx สามารถ Cache Backend Responses ได้
+
+เรียกว่า Proxy Cache
+
+แต่ต้องระวังมากกับ:
+auth
+cookies
+personalized response
+
+129) Cache Key
+ถ้า Cache ไม่ includeข้อมูลที่จำเป็น
+
+อาจส่ง Response ของ User A ให้ User B
+
+Critical Security Bug
+130) Static Cache ง่ายกว่า Dynamic Cache
+เริ่มจาก:
+images
+JS
+CSS
+
+ก่อน
+
+Dynamic Cache ต้องออกแบบ Contract ชัด
+131) Rate Limiting
+Nginx สามารถจำกัด Request Rate ได้
+
+เช่น:
+requests/sec ต่อ IP
+
+ช่วยป้องกัน Abuse
+132) Rate Limit ไม่แทน Auth
+Attacker อาจใช้หลาย IP
+
+และ Business Limits เช่น per-user ต้องทำใน App/Shared Store ตาม Use Case
+133) Connection Limit
+Nginx สามารถจำกัด Connections ต่อ Key/IP
+
+ต่างจาก Request Rate
+
+จำจาก Topic 5:
+rate
+≠
+concurrency
+
+134) Slow Client
+Client ส่ง Request ช้ามาก
+
+อาจกิน Connection/Resources
+
+Nginx มี Timeout/Buffering ช่วยกัน App จาก Slow Clients
+
+นี่คือเหตุผลที่ Reverse Proxy มีประโยชน์
+135) Upstream Keepalive
+Nginx สามารถ reuse Connections ไป Backend
+
+ลด TCP Handshake
+
+มีผลกับ High Traffic
+136) Backend Connection Limit
+ถ้า Nginx เปิด Connections ไป Node/PHP มากเกิน Capacity
+
+Backend อาจ Saturate
+
+ต้องคุม Worker/Pool ร่วมกัน
+137) Nginx Worker Processes
+Config มักมี:
+worker_processes auto;
+
+ให้สัมพันธ์ CPU
+
+Nginx ถูกออกแบบ event-driven จึง handle Connections จำนวนมากได้ต่อ Worker
+138) Worker Connections
+Directive:
+worker_connections
+
+กำหนด Connections ต่อ Worker โดยประมาณ
+
+แต่ Effective Limit ยังขึ้นกับ File Descriptors/System Limits
+139) Nginx Capacity ไม่ใช่แค่ worker_connections
+ยังมี:
+ulimit
+CPU
+RAM
+upstream capacity
+network
+
+อย่าปรับเลขเดียวแล้วคิดว่า Scale ได้ทันที
+140) Nginx Master Process
+Master:
+อ่าน config
+bind ports
+manage workers
+
+Worker:
+handle traffic
+
+มัก worker ใช้ User สิทธิ์ต่ำ
+141) Reload Flow
+เมื่อ Reload:
+master loads new config
+↓
+new workers start
+↓
+old workers finish old connections
+↓
+old workers exit
+
+จึง Reload ได้ค่อนข้าง Graceful
+142) Nginx 404
+หมายถึง Nginx/App ไม่พบ Resource ตาม Routing
+
+ต้องถามว่า:
+404 มาจาก Nginx หรือ App?
+
+143) แยก 404 Source
+ดู:
+response body
+headers
+Nginx access log
+application log
+
+ถ้า App ไม่ได้รับ Requestเลย น่าจะ Nginx Routing
+144) Nginx 403
+อาจเกิดจาก:
+permission denied
+deny rule
+directory index forbidden
+
+ดู Error Log
+145) directory index ... is forbidden
+เช่น Request Directory แต่ไม่มี Index และ Autoindex ปิด
+
+ไม่ได้หมายถึง File Permission เสมอไป
+146) 502 Bad Gateway
+Common Causes:
+upstream process down
+wrong port
+connection refused
+PHP-FPM socket missing
+permission to socket
+upstream invalid response
+
+147) 502 Debug Flow
+ถ้า Next.js:
+curl http://127.0.0.1:3000
+
+ถ้า Fail → App
+
+ถ้าผ่าน → Nginx config/proxy
+148) PHP 502
+ตรวจ:
+systemctl status php8.x-fpm
+
+และ:
+socket path
+socket permission
+Nginx error log
+
+149) 504 Gateway Timeout
+Nginx ต่อ Upstream ได้
+
+แต่ Upstream ไม่ตอบทัน proxy_read_timeout / FastCGI timeout
+
+Root Cause เช่น:
+slow DB
+deadlock
+external API slow
+CPU saturation
+long request
+
+150) 504 ไม่ควรเริ่มจาก Restart Nginx
+เพราะ Nginx อาจปกติดี
+
+ต้องดู Upstream Latency
+151) 499
+Nginx มัก log Status 499 สำหรับ:
+client closed request
+
+ไม่ใช่ Standard HTTP Status ที่ Nginx ส่งแบบปกติ
+152) ทำไม 499 สำคัญ
+ถ้า User/Load Balancer Timeout ก่อน Backendตอบ:
+client disconnects
+
+Nginx log 499
+
+แต่ Backend อาจยังทำงานต่อ
+153) 499 เยอะ
+อาจบอกว่า:
+backend ช้า
+client timeout สั้น
+network disconnect
+
+ต้องดูร่วมกับ $request_time
+154) 413
+Request body ใหญ่เกิน
+
+เช็ก:
+client_max_body_size
+
+155) 414
+URI Too Long
+
+มักเกิด Query String/URL ใหญ่มาก
+
+อาจต้องแก้ Client/API Design
+156) 400
+Bad Request
+
+อาจเกิดจาก:
+invalid HTTP
+bad headers
+TLS sent to HTTP port
+
+เช่นยิง HTTPS ไป Port HTTP ผิด
+157) 301/302 Loop
+ตรวจ:
+HTTP→HTTPS redirect
+www→non-www
+app redirect
+CDN redirect
+
+หลาย Layer Redirect ซ้อนกันได้
+158) Example Redirect Loop
+Cloudflare mode/config หนึ่งบังคับ HTTPS
+
+Nginxคิด incoming เป็น HTTP เพราะ Header ไม่ถูก
+
+Nginx redirect HTTPS ซ้ำ
+
+ต้องเข้าใจ Proxy Headers
+159) Canonical Domain
+เลือก:
+example.com
+หรือ
+www.example.com
+
+แล้ว Redirect อีกตัวไป Canonical
+
+ช่วย SEO/Consistency
+160) Example
+server {
+    listen 443 ssl;
+    server_name www.example.com;
+
+    return 301 https://example.com$request_uri;
+}
+
+161) DNS ต้องมีทั้งสองชื่อถ้าจะ Redirect
+ถ้า www.example.com ไม่ resolve มาถึง Server ก็ไม่มีโอกาส Redirect
+
+DNS Layerมาก่อน Nginx
+162) Nginx Config Variables
+เช่น:
+$host
+$request_uri
+$remote_addr
+$scheme
+
+ใช้ทำ Routing/Headers/Logs
+163) $host
+Host ที่ Nginx resolveจาก Request/Config
+
+มักเหมาะกว่า pass raw $http_host ในหลายกรณี
+
+แต่ต้องเข้าใจ Requirement
+164) $request_uri
+รวม Path + Query String ต้นฉบับ
+
+เช่น:
+/products?page=2
+
+165) $uri
+Normalized URI Path ใน Nginx
+
+ไม่เหมือน $request_uri ทุกกรณี
+
+สำคัญกับ rewrite/try_files
+166) Static Security
+ห้าม Serve Directory เช่น:
+.git
+.env
+backups
+database dumps
+logs
+
+ใต้ Document Root
+167) Backup File Risk
+เช่น:
+config.php.bak
+.env.old
+database.sql
+
+ถ้าอยู่ Public Root อาจดาวน์โหลดได้แม้ Original File Protected
+
+ดังนั้นอย่าเก็บ Backup ใน Web Root
+168) Autoindex
+Nginx สามารถแสดง Directory Listing
+
+เช่น:
+autoindex on;
+
+ไม่ควรเปิด Public โดยไม่ตั้งใจ
+169) Error Pages
+สามารถกำหนด:
+error_page 404 /404.html;
+
+หรือ Proxy ไป App
+
+แต่ต้องระวัง Error Page เองไม่ loop
+170) Maintenance Mode
+Nginx สามารถ Serve Maintenance Page ได้ก่อนถึง App
+
+เหมาะเวลา App unavailable intentionally
+
+แต่ Deployment ที่ดีควรลด downtimeมากกว่าใช้ maintenanceตลอด
+171) Health Endpoint
+สามารถ Proxy:
+/health
+
+ไป App
+
+หรือ Nginx ตอบเอง
+
+แต่สองแบบวัดคนละอย่าง
+172) Nginx-only health
+location = /nginx-health {
+    return 200 "ok";
+}
+
+บอกแค่ว่า Nginx ยังทำงาน
+
+ไม่ได้บอก App/DB Healthy
+173) App Health
+/app-health
+
+ควรตรวจ Application Readiness
+
+ใช้ Load Balancer ตาม Requirement
+174) อย่าทำ Health Check หนัก
+ถ้าทุก LB Probe:
+query 10 tables
+call 3 external APIs
+
+Health Check เองอาจทำระบบหนัก
+175) FastCGI Timeout
+PHP ใช้ Directive กลุ่ม:
+fastcgi_connect_timeout
+fastcgi_read_timeout
+
+ไม่ใช่ proxy_read_timeout
+
+เพราะ Protocol ต่างกัน
+176) Nginx Protocol Types
+proxy_pass
+→ HTTP
+
+fastcgi_pass
+→ FastCGI
+
+uwsgi_pass
+→ uWSGI
+
+grpc_pass
+→ gRPC
+
+ต้องใช้ให้ตรง Backend
+177) PHP-FPM ไม่ใช่ HTTP Server โดยปกติ
+จึงไม่ควร:
+proxy_pass http://127.0.0.1:9000;
+
+ไป FPM โดยตรง
+
+ต้องใช้ FastCGI
+178) Node เป็น HTTP Server
+จึงใช้:
+proxy_pass http://127.0.0.1:3000;
+
+ถูก Concept
+179) Nginx Config Separation
+ระบบใหญ่ควรแยก:
+global config
+site config
+shared snippets
+TLS config
+proxy headers
+
+ลด duplication
+180) Snippet
+เช่นสร้าง shared:
+/etc/nginx/snippets/proxy-headers.conf
+
+แล้ว include หลาย sites
+
+ช่วย Consistency
+181) แต่ Shared Snippet เปลี่ยนทีเดียวกระทบหลาย Sites
+ต้อง Review ดี
+
+Shared Config มี Blast Radius สูง
+182) Environment Separation
+UAT กับ Production ไม่ควรแชร์ Config โดยแก้มือแบบง่าย ๆ จนสับสน
+
+ควรมี Template/IaC/Version Control ในระยะยาว
+183) Nginx Config ควรอยู่ Version Control ไหม
+โดยทั่วไป Config Infrastructure ที่สำคัญควร Track Version
+
+เพื่อ:
+review
+history
+rollback
+reproducibility
+
+แต่ Secrets เช่น Private Key ไม่ควร Commit
+184) Symlink Deploy
+บาง PHP Deploy ใช้:
+/releases/20261019
+/current → latest release
+
+Nginx root ชี้:
+/current/public
+
+Deploy แค่เปลี่ยน Symlink
+
+ช่วย Rollback เร็ว
+185) แต่ PHP Opcache/Workers อาจต้อง Reload
+เพราะ Runtime อาจมี Code Cache
+
+Deploy Flow ต้องดู Runtime ด้วย
+186) Next.js Deploy
+ถ้ารัน Process ที่โหลด Build ตอน Start
+
+เปลี่ยนไฟล์อย่างเดียวอาจไม่พอ
+
+ต้อง Restart/rolling restart Node Processes
+187) Nginx ไม่ใช่ Process Manager ของ App
+Nginx proxy ไป App
+
+แต่ถ้า Node ตาย Nginx ไม่ได้ Start Node ให้
+
+ต้องใช้:
+systemd
+PM2
+container orchestrator
+
+188) Nginx ไม่ใช่ Database Connection Pool
+มันจัด HTTP Connections
+
+DB Capacity ยังเป็นเรื่อง App/DB Layer
+189) Nginx ไม่แก้ Slow SQL
+เพิ่ม Proxy Timeout ไม่ได้แก้:
+query 120 seconds
+
+ต้อง optimize DB/Application
+190) Nginx ไม่แทน Application Security
+Nginx ช่วย:
+TLS
+basic rate limiting
+headers
+request limits
+
+แต่:
+authorization
+business validation
+SQL injection prevention
+CSRF
+
+ยังต้อง App
+191) Nginx Troubleshooting Checklist
+เวลา Domain มีปัญหา:
+nginx running?
+config syntax valid?
+server_name match?
+listen correct?
+location match?
+upstream alive?
+port correct?
+
+192) ต่อ:
+proxy/FastCGI protocol correct?
+file permission correct?
+timeout?
+body size?
+logs say what?
+
+193) Commands ชุดสำคัญ
+sudo nginx -t
+sudo nginx -T
+sudo systemctl status nginx
+sudo systemctl reload nginx
+sudo tail -f /var/log/nginx/error.log
+sudo tail -f /var/log/nginx/access.log
+ss -lntp
+curl
+
+194) Debug 502
+Nginx
+↓
+Can I connect to upstream?
+
+Test Upstream ตรง ๆ
+195) Debug 504
+Nginx connected
+↓
+Why is upstream slow?
+
+ดู App/DB/External APIs
+196) Debug 404
+Which layer produced 404?
+Which location matched?
+What URI reached upstream?
+
+197) Debug 403
+deny rule?
+filesystem permission?
+directory index?
+
+198) Debug 413
+request too large at which layer?
+CDN?
+Nginx?
+PHP/App?
+
+199) Safe Config Change Flow
+edit config
+↓
+nginx -t
+↓
+review diff
+↓
+reload
+↓
+curl smoke test
+↓
+monitor logs
+
+ดีกว่า:
+edit
+↓
+restart
+↓
+hope
+
+200) Production Architecture Example — Next.js
+Internet
+↓
+Nginx :443
+↓
+proxy_pass
+↓
+127.0.0.1:3000
+↓
+Next.js
+
+201) Production Architecture Example — Laravel
+Internet
+↓
+Nginx :443
+↓
+try_files
+↓
+index.php
+↓
+FastCGI
+↓
+PHP-FPM
+↓
+Laravel
+
+202) Mixed Architecture
+example.com/
+→ Next.js
+
+example.com/api/
+→ Laravel
+
+Nginx สามารถ Route ทั้งสองได้
+
+เช่น Concept:
+location /api/ {
+    proxy_pass http://api_backend;
+}
+
+location / {
+    proxy_pass http://frontend;
+}
+
+ถ้า Laravel เป็น HTTP API Service
+203) หรือใช้ Subdomains
+www.example.com
+→ Next.js
+
+api.example.com
+→ Laravel
+
+มักแยก Config ง่ายกว่าในบางระบบ
+204) Mental Model สำคัญที่สุด
+เมื่อ Nginx อยู่หน้า App ให้คิดว่ามีสอง Request Legs:
+Client
+→ Nginx
+
+Nginx
+→ Upstream
+
+ทั้งสองขามี:
+connection
+timeout
+headers
+protocol
+
+ของตัวเอง
+205) อีก Mental Model
+Nginx ทำหน้าที่หลัก 4 เรื่อง:
+1. Listen
+2. Match
+3. Serve or Forward
+4. Observe/Protect
+
+คือ:
+listen port/domain
+↓
+match location
+↓
+serve file / proxy
+↓
+logs, TLS, limits, headers
+
+สรุป 6.6
+Nginx คือ Gateway ฝั่ง Web ที่รับ Request ก่อน Application และสามารถทำ:
+HTTPS / TLS
+Reverse Proxy
+Static Files
+Virtual Hosts
+Load Balancing
+Headers
+Compression
+Rate/Body Limits
+Logging
+
+สิ่งที่ต้องจำให้แม่นคือ:
+server
+→ domain / port
+
+location
+→ path routing
+
+proxy_pass
+→ HTTP backend เช่น Node
+
+fastcgi_pass
+→ PHP-FPM
+
+root / alias
+→ static filesystem mapping
+
+และเวลาเจอ Error:
+404
+→ routing/file/app route
+
+403
+→ permission/deny/directory
+
+502
+→ upstream ติดต่อไม่ได้หรือ response ผิด
+
+504
+→ upstream ตอบไม่ทัน
+
+413
+→ body ใหญ่เกิน
+
+หลักสำคัญที่สุดคือ:
+ก่อน Reload Nginx ทุกครั้งให้ใช้ nginx -t และเวลา Error ให้แยกว่า Request พังที่ Nginx เอง หรือพังที่ Upstream Application
+
+
