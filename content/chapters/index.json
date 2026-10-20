@@ -35,6 +35,13 @@
       "title": "Concurrency, Race Condition & Distributed Coordination",
       "summary": "เมื่อเรียนจบแล้ว จะเข้าใจว่าระบบที่มีหลาย Request, Worker หรือ Server ทำงานพร้อมกันเกิดปัญหาอะไรได้บ้าง เช่น Race Condition, Deadlock และ Lost Update รวมถึงวิธีแก้ด้วย Lock, Mutex, Semaphore, Atomic Operation, Optimistic/Pessimistic Lock, Idempotency และ Distributed Lock เพื่อออกแบบระบบที่ถูกต้องและปลอดภัยภายใต้การทำงานพร้อมกัน",
       "status": "ready"
+    },
+    {
+      "id": "6",
+      "slug": "6",
+      "title": "Server / Linux / Deployment / DevOps",
+      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจว่าเว็บจากเครื่อง Developer ถูกนำขึ้น Production อย่างไร ตั้งแต่โครงสร้าง Server, Linux, Process, Port, Network, Nginx, Reverse Proxy, Load Balancer, Node.js/PM2/systemd, PHP/PHP-FPM, Worker/Supervisor, Docker, Environment Variables, SSL/HTTPS, Domain/DNS, Logging, Monitoring, CI/CD, Deployment, Restart/Rollback ไปจนถึงการดูแลระบบให้รันต่อเนื่องและแก้ปัญหาเมื่อ Production มีปัญหาได้อย่างเป็นระบบ",
+      "status": "ready"
     }
   ]
 }
