@@ -8634,3 +8634,6650 @@ iss / aud / exp
 
 และ Social Loginไม่ได้ทำให้ Authorizationของระบบเราหายไป:
 Google/LINE/Facebook สามารถบอกเราได้ว่า Userคือใคร แต่ระบบของเรายังต้องเป็นคนตัดสินเองว่า Userคนนั้นเป็นใครในระบบภายใน มี Roleอะไร และเข้าถึง Resourceใดได้บ้าง
+
+
+7.6 Web Security Fundamentals: Same-Origin Policy, CORS & Browser Security Model แบบลงลึก
+บทนี้จะอธิบายว่า Browser ตัดสินอย่างไรว่า Web Page หนึ่งสามารถเรียก API อีก Domain ได้หรือไม่, Origin คืออะไร, Same-Origin Policy ทำอะไร, CORS ทำอะไร, Preflight คืออะไร และทำไม CORS ไม่ใช่ Authentication
+
+Mental Model:
+Browser
+↓
+Where did this page come from?
+↓
+What origin is API on?
+↓
+Same origin?
+├→ Yes → generally allowed
+└→ No
+    ↓
+   Check CORS policy
+
+หลักสำคัญตั้งแต่ต้นคือ:
+CORS เป็น Browser Security Policy สำหรับควบคุม Cross-Origin Access ไม่ใช่ระบบ Login และไม่สามารถแทน Authentication หรือ Authorization ได้
+
+1) Origin คืออะไร
+Origin ประกอบด้วย 3 ส่วน:
+scheme
+host
+port
+
+เช่น:
+https://example.com:443
+
+มี:
+scheme = https
+host = example.com
+port = 443
+
+2) Origin ไม่เท่ากับ URL
+สอง URLนี้:
+https://example.com/page-a
+https://example.com/page-b
+
+เป็น Originเดียวกัน
+
+เพราะ:
+scheme เหมือน
+host เหมือน
+port เหมือน
+
+Pathไม่ถูกใช้ตัดสิน Origin
+3) Example Same Origin
+https://example.com/products
+https://example.com/api/orders
+
+Same Origin
+4) Example Different Origin — Host
+https://www.example.com
+https://api.example.com
+
+ต่าง Origin
+
+แม้อยู่ Domainหลักเดียวกัน
+
+เพราะ Hostต่าง:
+www.example.com
+api.example.com
+
+5) Different Origin — Scheme
+http://example.com
+https://example.com
+
+ต่าง Origin
+
+เพราะ:
+http ≠ https
+
+6) Different Origin — Port
+http://localhost:3000
+http://localhost:8080
+
+ต่าง Origin
+
+เพราะ Portต่าง
+
+นี่คือเหตุผลที่ Dev Environmentเจอ CORSบ่อยมาก
+7) localhost กับ 127.0.0.1
+http://localhost:3000
+http://127.0.0.1:3000
+
+ถือว่าต่าง Origin
+
+เพราะ Hostไม่เหมือนกัน
+
+แม้ชี้เครื่องเดียวกัน
+8) Origin Exampleที่ควรจำ
+Frontend:
+http://localhost:3000
+
+API:
+http://localhost:8080
+
+Cross-Origin
+
+จึงอาจต้อง CORS
+9) Same-Origin Policy คืออะไร
+SOP = Same-Origin Policy
+
+เป็น Browser Security Modelที่จำกัด:
+JavaScriptจาก Originหนึ่ง ไม่ควรอ่านข้อความ Sensitiveจากอีก Originได้โดยอิสระ
+
+10) ทำไม Browserต้องมี Same-Origin Policy
+สมมติไม่มี SOP
+
+User Login:
+https://bank.example
+
+แล้วเปิด:
+https://attacker.example
+
+Attacker JavaScriptอาจทำ:
+fetch("https://bank.example/account")
+
+แล้วอ่าน Bank Dataของ Userได้
+
+นี่อันตรายมาก
+11) SOPช่วยแยก Websitesออกจากกัน
+Concept:
+bank.com JS
+→ bank.com data
+
+attacker.com JS
+→ attacker.com data
+
+Cross-origin accessถูกจำกัด
+12) Browser Security Boundary
+Browserถือ Originเป็น Security Boundaryสำคัญ
+
+แต่ไม่ใช่ Boundaryเดียว
+
+ยังมี:
+cookies
+CSP
+sandbox
+permissions
+
+13) Same-Origin Policyไม่ได้ห้าม Network Requestทุกชนิด
+นี่สำคัญ
+
+Cross-origin requestsบางประเภทสามารถ “ส่ง” ได้
+
+แต่ JavaScriptอาจ “อ่านข้อความ Response”ไม่ได้
+14) Example Image
+เว็บสามารถโหลด:
+<img src="https://other.example/image.jpg">
+
+Cross-Originได้
+15) Script
+สามารถใช้:
+<script src="https://cdn.example/app.js"></script>
+
+ได้ตาม browser rules
+16) Form
+HTML Formสามารถ submit Cross-Originได้
+
+เช่น:
+<form action="https://bank.example/transfer" method="POST">
+
+นี่เป็นเหตุผลหนึ่งที่ CSRFเกิดได้
+17) แต่ fetch() ถูกควบคุมเข้มกว่า
+JavaScript:
+fetch("https://api.other.com/data")
+
+จะต้องผ่าน CORSถ้าต่าง Origin
+18) CORS คืออะไร
+CORS = Cross-Origin Resource Sharing
+
+เป็น Mechanismที่ Serverใช้บอก Browserว่า:
+Originไหนได้รับอนุญาตให้อ่าน Responseนี้ได้
+
+19) Serverเป็นคนประกาศ Policy
+ผ่าน Response Headers เช่น:
+Access-Control-Allow-Origin: https://app.example.com
+
+Browserเป็นคน enforce
+20) CORSไม่ได้ทำให้ Serverปฏิเสธ Network Requestเสมอไป
+Serverอาจได้รับ Requestแล้ว
+
+แต่ Browserไม่ยอมให้ JavaScriptอ่าน Response
+
+นี่เป็นจุดที่หลายคนสับสน
+21) Example
+Frontend:
+https://app.example.com
+
+API:
+https://api.example.com
+
+APIตอบ:
+Access-Control-Allow-Origin: https://app.example.com
+
+Browserจึงยอมให้ JSอ่าน Response
+22) ถ้า Headerไม่มี
+Browserอาจแสดง Errorประมาณ:
+blocked by CORS policy
+
+แต่ APIอาจถูกเรียกถึงแล้ว
+23) CORS Error != Serverไม่ทำงาน
+อาจเป็น:
+server returned 200
+but browser blocked response
+
+ดังนั้นเวลา Debugต้องดู:
+Network tab
+server logs
+response headers
+
+24) CORSถูก enforceโดย Browser
+ถ้าเรียก APIจาก:
+curl
+Postman
+server-to-server
+
+CORSโดยทั่วไปไม่เกี่ยว
+25) Example
+curl https://api.example.com/data
+
+ไม่ได้ถูก Browser CORS Policyบล็อก
+26) ดังนั้น CORSไม่ใช่ API Security Boundaryเต็มรูปแบบ
+ถ้า APIไม่มี Authentication
+
+Attackerสามารถ:
+curl
+Postman
+custom script
+
+เรียกได้โดยตรง
+
+แม้ CORSไม่อนุญาต Origin attacker
+27) นี่คือหลักสำคัญมาก
+ห้ามใช้ CORSแทน Authentication
+
+ไม่ดี:
+Only allow frontend.com via CORS
+→ API safe
+
+ผิด
+
+Attackerไม่จำเป็นต้องใช้ Browser
+28) CORSไม่ใช่ Authorizationด้วย
+ถึง Originถูกต้อง:
+https://app.example.com
+
+ก็ยังต้องตรวจ:
+user login?
+role?
+resource ownership?
+
+ฝั่ง Server
+29) Origin Header
+Browserส่ง:
+Origin: https://app.example.com
+
+ใน Cross-Origin Requestsหลายแบบ
+
+Serverใช้ตัดสิน CORS
+30) Originไม่ควรถูกใช้เป็น User Identity
+Originบอกว่า Pageมาจากไหน
+
+ไม่ได้บอกว่า:
+Userคือใคร
+
+31) Basic CORS Response
+Access-Control-Allow-Origin: https://app.example.com
+
+หมายถึง Browserอนุญาตให้ Originนั้นอ่าน Response
+32) Wildcard
+Access-Control-Allow-Origin: *
+
+หมายถึง:
+Any origin
+
+อ่าน Responseได้ตามเงื่อนไข CORS
+33) * เหมาะเมื่อไร
+เช่น Public APIที่ตั้งใจ:
+public data
+no credentials
+
+เช่น:
+public weather-like endpoint
+public metadata
+
+34) * ไม่ควรใช้กับ Sensitive Authenticated APIsแบบคิดง่าย ๆ
+โดยเฉพาะถ้าเกี่ยวกับ Credentials
+
+ควร allowเฉพาะ Originsที่จำเป็น
+35) Credentialsใน CORS
+Credentialsอาจหมายถึง:
+cookies
+HTTP authentication
+client certificatesบาง context
+
+Browser Fetchต้องเปิด credentialsตามกรณี
+36) Fetch with Cookies Cross-Origin
+ตัวอย่าง:
+fetch("https://api.example.com/profile", {
+  credentials: "include"
+})
+
+37) Serverต้องตอบ
+เช่น:
+Access-Control-Allow-Origin: https://app.example.com
+Access-Control-Allow-Credentials: true
+
+38) Credentials + Wildcard
+โดยทั่วไปไม่สามารถใช้:
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Credentials: true
+
+กับ credentialed CORSแบบที่หวังไว้
+
+ต้องระบุ Originเจาะจง
+39) ทำไม
+เพราะถ้า Cookie Sensitiveถูกส่งแล้วทุก Originอ่าน Responseได้:
+อันตรายมาก
+
+Browserจึงจำกัด
+40) Dynamic Origin
+บาง Backendทำ:
+read Origin
+↓
+echo it back
+
+เช่น:
+Origin: https://attacker.com
+
+Access-Control-Allow-Origin: https://attacker.com
+
+ถ้าทำแบบไม่ Validate:
+เท่ากับ Allowทุก Origin
+
+41) Bad Pattern
+res.setHeader(
+  "Access-Control-Allow-Origin",
+  req.headers.origin
+);
+
+โดยไม่มี Allowlist
+
+อันตรายกับ Credentialed APIs
+42) Correct Dynamic Allowlist
+Concept:
+allowedOrigins = [
+  https://www.example.com,
+  https://admin.example.com
+]
+
+ตรวจ Exact Match
+43) Exact Origin Matching
+ระวัง:
+https://example.com.attacker.com
+
+ไม่ได้เป็น subdomainของ example.comแบบที่หวัง
+
+อย่าใช้ naive:
+origin.includes("example.com")
+
+44) Better
+Parse Originเป็น URL
+
+แล้วตรวจ:
+protocol
+hostname
+port
+
+กับ Policyชัดเจน
+45) Subdomain Allowlist
+ถ้าต้อง allow:
+*.example.com
+
+ต้องระวังว่า:
+ทุก subdomainที่ถูก compromiseจะได้รับสิทธิ์ CORSด้วย
+
+46) Subdomain Takeover Risk
+ถ้ามี:
+old.example.com
+
+ชี้ไป serviceที่เลิกใช้แล้ว
+
+Attacker takeoverได้
+
+และ CORS allow *.example.com
+
+API Sensitiveอาจถูกอ่านผ่าน subdomainนั้น
+47) ดังนั้น *.domainเป็น Security Decisionจริง
+ไม่ใช่แค่ convenience
+48) Simple Request
+CORSแบ่ง Requestบางประเภทเป็น:
+Simple Request
+
+ซึ่ง Browserส่ง Requestจริงได้เลยก่อน
+
+แล้วตรวจ Response CORS
+49) Simple Methods
+โดยทั่วไปเช่น:
+GET
+HEAD
+POST
+
+แต่ต้องมี Content-Type/Headersตามข้อกำหนด
+50) Simple Content Types
+เช่น:
+text/plain
+application/x-www-form-urlencoded
+multipart/form-data
+
+ตาม browser CORS rules
+51) JSON POSTมักไม่ใช่ Simple Request
+ถ้า:
+Content-Type: application/json
+
+Browserมักทำ Preflightก่อน
+52) Preflight คืออะไร
+Browserส่ง:
+OPTIONS /api/orders
+
+ก่อน Requestจริง
+
+เพื่อถาม Serverว่า:
+Originนี้ใช้ Method/Headerนี้ได้ไหม?
+
+53) Example Preflight
+OPTIONS /api/orders
+Origin: https://app.example.com
+Access-Control-Request-Method: POST
+Access-Control-Request-Headers: Content-Type, Authorization
+
+54) Server Response
+Access-Control-Allow-Origin: https://app.example.com
+Access-Control-Allow-Methods: GET, POST
+Access-Control-Allow-Headers: Content-Type, Authorization
+
+55) ถ้า Browserพอใจ
+จึงส่ง Requestจริง:
+POST /api/orders
+
+56) Preflightไม่ใช่ Authentication
+อย่าคิดว่า:
+OPTIONS passed
+→ request authorized
+
+ไม่ใช่
+
+Requestจริงยังต้อง Auth/AuthZ
+57) Preflightอาจไม่มี Cookieในแบบที่คุณคาด
+Serverไม่ควร relyว่า Preflightจะมี Authentication Contextเหมือน Requestจริง
+
+Middlewareต้อง handle OPTIONSเหมาะสม
+58) Common Bug
+Auth Middlewareทำ:
+OPTIONS
+→ no token
+→ 401
+
+Browserจึงไม่ส่ง Requestจริง
+
+เกิด CORS Error
+59) Fix Concept
+ให้ CORS/OPTIONS handlingเกิดก่อนหรือร่วมกับ Authอย่างถูกต้อง
+
+แต่ไม่เปิด Business Endpointโดยไม่ auth
+60) Access-Control-Allow-Methods
+ระบุ Methodsที่อนุญาต
+
+เช่น:
+Access-Control-Allow-Methods: GET, POST, PATCH
+
+61) อย่าเปิด Methodsเกินจำเป็น
+ถ้า APIมีแค่ GET:
+
+ไม่ต้อง:
+PUT DELETE PATCH
+
+แม้ CORSไม่ใช่ Security Boundaryเต็มรูปแบบ แต่ Least Privilegeยังดี
+62) Access-Control-Allow-Headers
+ระบุ Request Headersที่ Browserส่งได้
+
+เช่น:
+Access-Control-Allow-Headers:
+Content-Type, Authorization
+
+63) Custom Headerทำให้เกิด Preflightได้
+เช่น:
+X-Request-ID
+X-CSRF-Token
+
+Browserต้องถาม Serverก่อน
+64) Access-Control-Expose-Headers
+โดย default JavaScriptอ่าน Response Headersบางตัวเท่านั้น
+
+ถ้าต้องการอ่าน Custom Header:
+Access-Control-Expose-Headers: X-Request-ID
+
+65) Example
+Serverตอบ:
+X-Request-ID: abc123
+
+ถ้า Cross-Origin JSต้องอ่าน อาจต้อง expose
+66) Access-Control-Max-Age
+ให้ Browser cache Preflight Result
+
+เช่น:
+Access-Control-Max-Age: 600
+
+ลด OPTIONS Requests
+67) แต่ Cacheนานเกินไปมี Trade-off
+ถ้าเปลี่ยน CORS Policy:
+
+Browserบางเครื่องอาจใช้ cached resultต่อชั่วคราว
+68) Preflight Performance
+ถ้า API Requestทุกครั้งต้อง:
+OPTIONS
+↓
+real request
+
+Latencyเพิ่ม
+
+จึงมี:
+preflight caching
+same-origin architecture
+
+ช่วยได้
+69) Same-Origin Architecture
+แทน:
+frontend.example.com
+api.example.com
+
+บางระบบใช้:
+example.com
+/api/*
+
+ผ่าน Reverse Proxy
+
+ทำให้ Browserเห็น Same Origin
+70) Example Nginx
+https://example.com/
+→ Next.js
+
+https://example.com/api/
+→ Backend API
+
+Browserไม่ต้อง CORSระหว่างสองส่วน
+71) ข้อดี
+ลด:
+CORS config
+cookie cross-site complexity
+preflight
+
+ในหลายกรณี
+72) แต่ Same-Originไม่ได้แปลว่า Securityครบ
+ยังต้อง:
+authentication
+authorization
+CSRF
+XSS
+
+เหมือนเดิม
+73) Subdomain != Same Origin
+app.example.com
+api.example.com
+
+ยัง Cross-Origin
+
+แม้ same-siteใน Cookie terminologyอาจต่างเรื่องกัน
+
+นี่เป็นจุดสับสนสำคัญ
+74) Origin vs Site
+Origin:
+scheme + host + port
+
+Siteเป็น Conceptที่กว้างกว่าและเกี่ยวกับ registrable domain/schemeใน Browser Securityบางเรื่อง
+
+เช่น Cookies SameSite
+75) Same-siteไม่เท่ากับ Same-origin
+ตัวอย่าง:
+https://app.example.com
+https://api.example.com
+
+อาจถือ same-siteในบาง context
+
+แต่:
+different origin
+
+จึงยังต้อง CORSสำหรับ Fetch
+76) Cookie Domain กับ CORSคนละเรื่อง
+การตั้ง:
+Domain=.example.com
+
+ไม่ได้ทำให้ app/api same-origin
+
+ยังต้อง CORSถ้า Fetchข้าม Host
+77) Cookieถูกส่งหรือไม่ กับ JSอ่าน Responseได้หรือไม่ เป็นคนละ Policy
+Cookie Policy:
+Should browser send cookie?
+
+CORS:
+Should browser let JS read response?
+
+ต้องแยก
+78) Cross-Site vs Cross-Origin
+CSRFเกี่ยวข้องมากกับ Browserส่ง Credentials
+
+CORSเกี่ยวข้องกับ JS cross-origin access
+
+สองเรื่องเกี่ยวกันแต่ไม่เหมือนกัน
+79) CORSไม่ได้ป้องกัน CSRFทั้งหมด
+เพราะ HTML Formสามารถส่ง Cross-Origin POSTบางแบบได้โดยไม่ต้อง CORSอ่าน Response
+
+Attackerไม่จำเป็นต้องอ่าน Responseเพื่อทำ Damage
+80) Example CSRF
+Victim Login Bank
+
+Attacker page:
+<form
+  action="https://bank.example/transfer"
+  method="POST">
+
+Browserอาจส่ง Credentialตาม Cookie Policy
+
+Attackerไม่ต้องอ่าน Response
+81) ดังนั้น Bankต้องมี CSRF Protection
+ไม่ใช่แค่:
+CORS only bank frontend
+
+82) CORS Errorที่พบบ่อย
+No 'Access-Control-Allow-Origin' header
+
+หมายถึง Responseไม่มี Headerที่ Browserต้องการ
+83) แต่ Root Causeอาจไม่ใช่ CORS Configตรง ๆ
+เช่น APIเกิด 500ก่อน Middleware CORSทำงาน
+
+Response Errorเลยไม่มี CORS Header
+
+Browserแสดง CORS Error
+
+แต่ Root Causeจริงคือ Server exception
+84) Debug CORSต้องดู Server Log
+อย่าปรับ Headersมั่วทันที
+
+Flow:
+Browser Network
+↓
+Was OPTIONS sent?
+↓
+What status?
+↓
+What response headers?
+↓
+Did real request happen?
+↓
+Server logs
+
+85) Example
+Preflight:
+OPTIONS → 404
+
+แปลว่า Server/Proxyไม่ handle OPTIONS path
+86) อีก Example
+OPTIONS → 301 redirect
+
+บาง Browser/Flowอาจมีปัญหา
+
+ควรให้ correct endpoint/HTTPS routeตอบ CORSตรง ๆ
+87) Reverse Proxyสามารถทำ CORSได้
+Nginxอาจใส่ Headers
+
+หรือ Appทำ
+
+แต่ควรกำหนด Ownershipชัด
+88) ถ้า Nginxและ Appตั้ง CORSทั้งคู่
+อาจได้:
+duplicate headers
+conflicting policy
+
+Debugยาก
+
+ควรเลือก Layerหลัก
+89) CORS at Gateway
+ระบบหลาย Servicesอาจจัด CORSที่:
+API Gateway
+
+เพื่อ consistency
+
+แต่ Backendยังต้อง Security Checksเอง
+90) CDN Caching + CORS
+ถ้า Responseแตกต่างตาม Origin
+
+ต้องจัด Cacheให้ถูก
+91) Vary: Origin
+ถ้า Server Dynamic CORS Responseตาม Request Origin
+
+ควรพิจารณา:
+Vary: Origin
+
+เพื่อบอก Cacheว่า Responseต่างกันตาม Origin
+92) ถ้าไม่มี Vary: Origin
+CDN/Proxyอาจ cache:
+Access-Control-Allow-Origin: app-a.com
+
+แล้วส่งให้ app-b.com
+
+เกิด Bug/Security Misconfigurationได้
+93) Cache Keyกับ Authentication
+ยิ่งถ้า API authenticated
+
+ต้องระวัง:
+CDN cache user-specific response
+
+อันตรายกว่า CORSอีก
+94) Sensitive APIมักไม่ควรถูก Public Cacheแบบไม่ตั้งใจ
+ใช้:
+Cache-Control: private
+no-store
+
+ตาม requirement
+95) Origin Header Spoofได้ไหม
+Browser JSทั่วไปไม่สามารถตั้ง Origin arbitraryในลักษณะเดียวกับ custom clients
+
+แต่:
+curl/custom attacker
+
+ส่ง Originอะไรก็ได้
+
+ดังนั้น Origin Headerไม่ใช่ Authentication
+96) นี่ตอกย้ำอีกครั้ง
+CORSมีไว้ป้องกัน Browser Context
+
+ไม่ใช่ป้องกัน attackerที่ยิง HTTPเอง
+97) CORSกับ Mobile App
+Native Mobile Appไม่ได้ใช้ Browser CORS Policyแบบ Web Pageทั่วไป
+
+ดังนั้นห้ามพึ่ง CORSเพื่อกัน Mobile/API abuse
+98) CORSกับ Server-to-Server
+ไม่มี Same-Origin Policyแบบ Browser
+
+จึง:
+Service A → Service B
+
+ไม่ต้อง CORS
+99) Next.js Server-side Fetch
+ถ้า Next.js Server ComponentหรือBackendเรียก API:
+server → API
+
+CORSไม่เกี่ยว
+
+เพราะไม่ใช่ Browser JavaScript
+100) Client-side Fetch
+React Browser:
+browser → API
+
+ถ้า Cross-Origin:
+CORS applies
+
+101) นี่เป็น Bugที่เจอบ่อย
+Server-side fetchผ่าน
+
+แต่ Browser fetchพัง
+
+Developerสงสัยว่า APIทำไมบางทีใช้ได้บางทีไม่ได้
+
+คำตอบอาจเป็น CORS
+102) mode: "no-cors"
+หลายคนลองแก้ด้วย:
+fetch(url, {
+  mode: "no-cors"
+})
+
+นี่ไม่ใช่การ “ปิด CORS”
+103) no-cors ทำอะไร
+Browserจะจำกัด Request/Responseมาก
+
+Responseเป็น:
+opaque
+
+JavaScriptอ่าน Body/Statusหลายอย่างไม่ได้
+
+ไม่ได้ช่วยเรียก JSON APIทั่วไปตามต้องการ
+104) ดังนั้นอย่าใช้ no-corsเป็น Fix
+Fix CORSที่ Server/Architectureให้ถูกต้อง
+105) Browser Extension Security
+Extensionบางชนิดมี Privilegesข้าม Originได้ตาม permissions
+
+จึงเป็น Threat Modelอีกประเภท
+
+แต่ Web Appทั่วไปไม่ควร assume extensionsปลอดภัย
+106) iframeและ Origin
+Pageหนึ่ง embedอีก Originผ่าน:
+<iframe src="https://other.com">
+
+แต่ parentไม่สามารถอ่าน DOMของ iframe cross-originได้ตาม SOP
+107) ถ้าต้องสื่อสารข้าม iframe
+ใช้:
+window.postMessage()
+
+108) postMessage Security
+ต้องตรวจ:
+event.origin
+
+ก่อนเชื่อ Message
+109) Bad Pattern
+window.addEventListener("message", (event) => {
+  handle(event.data);
+});
+
+โดยไม่ตรวจ origin
+
+Attacker pageอาจส่ง Messageมา
+110) Better
+if event.origin === expectedOrigin
+
+แล้วค่อย process
+111) เวลา postMessage
+ไม่ควรส่ง:
+postMessage(secret, "*")
+
+ถ้า targetรู้แน่
+
+ควรระบุ Exact Target Origin
+112) SOPกับ DOM
+Cross-origin pageไม่สามารถอ่าน:
+DOM
+localStorage
+many JS properties
+
+ของอีก Originได้
+113) localStorageถูกแบ่งตาม Origin
+ดังนั้น:
+app.example.com localStorage
+
+ไม่ใช่อันเดียวกับ:
+api.example.com localStorage
+
+114) SessionStorageก็ Origin-scoped
+และมี Tab/session semanticsเพิ่มเติม
+115) Cookiesไม่ได้เหมือน localStorage
+Cookie Scopeควบคุมด้วย:
+Domain
+Path
+SameSite
+Secure
+
+และ Browserส่งตาม Rules
+116) HttpOnly Cookie
+JavaScriptอ่านไม่ได้
+
+แต่ Browserยังส่งให้ Serverได้
+
+นี่เป็น Intentional Security Design
+117) Cookie SameSite ไม่ใช่ CORS
+ย้ำอีกครั้ง:
+SameSite
+→ cookie sending rules
+
+CORS
+→ JavaScript response sharing rules
+
+118) Preflightถูก Cacheโดย Browser
+Developerอาจเปลี่ยน CORS Configแล้ว Browserยังแสดง behaviorเก่า
+
+อาจเกิดจาก cached preflight
+
+ทดสอบด้วย:
+new private window
+disable cache
+wait max-age
+
+ตามกรณี
+119) Browser Differences
+CORS/SameSiteรายละเอียดบางส่วนเปลี่ยนตาม Browser Versions
+
+แต่ Core Modelเหมือนกัน
+
+จึงไม่ควรเขียน hackเฉพาะ Browserถ้าไม่จำเป็น
+120) Development CORS
+Devอาจ allow:
+http://localhost:3000
+http://localhost:3001
+
+121) Productionไม่ควร copy Dev Allowlistมั่ว
+เช่น Prod APIไม่จำเป็นต้อง allow:
+http://localhost:*
+
+เว้นแต่มี Use Caseจริง
+122) Why localhost in production can matter
+ถ้า API credentialed CORS allow localhostโดยไม่จำเป็น
+
+Malicious local app/page contextบางแบบอาจเพิ่ม Attack Surface
+
+Principleคือ allowเท่าที่ใช้
+123) Preview Deployments
+Vercel-like previewsสร้าง Domainใหม่ทุก Branch
+
+เช่น:
+branch-123.example-preview.com
+
+CORS managementจะยากขึ้น
+124) อย่าใช้ *แก้ Previewง่าย ๆกับ Sensitive API
+ทางเลือก:
+separate UAT API
+signed preview access
+controlled domain pattern
+proxy same-origin
+
+ตาม Architecture
+125) Regex Origin Allowlist
+ถ้าใช้ Regexต้องระวัง Anchor
+
+Bad:
+example\.com
+
+อาจ match:
+example.com.attacker.org
+
+ถ้า logicไม่ strict
+126) Correct Concept
+ตรวจ parsed hostnameและ suffix boundaryอย่างชัดเจน
+
+แต่ Exact Allowlistง่ายและปลอดภัยกว่าเมื่อทำได้
+127) null Origin
+บาง Requestsอาจมี:
+Origin: null
+
+เช่น certain sandbox/file contexts
+
+อย่า allow nullแบบ blindบน Sensitive API
+128) Why null dangerous
+หลาย Contextที่แตกต่างกันอาจส่ง Origin null
+
+ถ้า API allow:
+Access-Control-Allow-Origin: null
+
+กว้างเกินที่คิด
+129) CORSกับ Private Network
+Browserมี Security Constraintsเพิ่มกับ Requestsไป Private Networkในบาง modern contexts
+
+แต่ไม่ควร relyเป็น API protection
+
+Network Firewall/Authยังสำคัญ
+130) CORS Error can hide DNS/TLS Problem
+ถ้า Endpointถูก Redirect/Proxyผิด
+
+Browserอาจ report network/CORS-like symptoms
+
+ตรวจ:
+DNS
+TLS
+redirect
+OPTIONS
+
+ด้วย
+131) Example Debug Flow
+Frontend:
+http://localhost:3000
+
+API:
+https://api.example.com
+
+Browser error
+132) Step 1 ดู Network
+มี:
+OPTIONS
+
+ไหม?
+133) Step 2 ดู Status
+เช่น:
+403
+
+134) Step 3 ดู Headers
+มีไหม:
+Access-Control-Allow-Origin
+Access-Control-Allow-Methods
+Access-Control-Allow-Headers
+
+135) Step 4 ดู Origin Request
+Origin: http://localhost:3000
+
+Server allow exact originไหม?
+136) Step 5 ดู Middleware Order
+CORS middlewareถูกเรียกก่อน:
+auth
+error
+routing
+
+หรือไม่
+137) Step 6 ดู Proxy
+Nginx/CDNตัด Headersออกหรือเปล่า
+138) CORS Headersบน Error Responses
+ถ้า APIตอบ 401/403/500แต่ไม่มี CORS Header
+
+Browserอาจซ่อน Response Detailจาก JS
+
+Frontendเห็น generic CORS error
+139) ดังนั้น CORSควร applyอย่างสม่ำเสมอ
+กับ responsesที่ relevant รวม error paths
+
+โดยไม่เปิด Originเกิน policy
+140) Credentials Example
+Frontend:
+fetch("https://api.example.com/me", {
+  credentials: "include"
+});
+
+API:
+Access-Control-Allow-Origin: https://app.example.com
+Access-Control-Allow-Credentials: true
+
+Cookieเองก็ต้องตั้ง:
+Secure
+SameSite appropriate
+
+141) ถ้า Cookieไม่ถูกส่ง
+อย่าโทษ CORSทันที
+
+ตรวจ:
+Domain
+Path
+Secure
+SameSite
+expiry
+third-party cookie rules
+
+142) CORSผ่านแต่ Authenticationยัง 401ได้
+เช่น:
+CORS correct
+but cookie missing
+
+แปลว่า CORSกับ Cookie Authเป็นคนละปัญหา
+143) Cookie Sentแต่ CORS Blocked
+ตรงข้ามก็เกิดได้:
+server authenticated request
+returns data
+browser blocks JS from reading
+
+นี่ทำให้ CSRF Riskยังมีแม้ CORS block
+144) CORSไม่ได้ป้องกัน Side Effectเสมอ
+สำคัญมาก
+
+Serverอาจ execute:
+transfer
+delete
+update
+
+ก่อน Browserบล็อก Response
+
+จึงต้อง CSRF Protection/Authorization
+145) Unsafe GET
+อย่าทำ:
+GET /delete-user?id=123
+
+เพราะ GETสามารถ triggerง่ายจาก:
+img
+link
+prefetch
+crawler
+
+GETควรเป็น Safe/Read-onlyตาม HTTP semantics
+146) POSTไม่ได้ปลอดภัยจาก CSRFเอง
+HTML Formส่ง POSTได้
+
+ดังนั้น State-changing endpointยังต้อง CSRF controlsถ้าใช้ cookie auth
+147) Custom JSONช่วยเพิ่ม Preflightแต่ไม่ใช่ CSRF Defenseสมบูรณ์แบบ
+มันช่วยบาง threat scenarios
+
+แต่ Security Designไม่ควร relyเพียงว่า:
+attacker cannot send application/json form
+
+Defense-in-depthดีกว่า
+148) Origin Checkingสำหรับ CSRF
+Serverสามารถตรวจ:
+Origin
+Referer
+
+เป็น CSRF Controlเพิ่มเติม
+
+แต่รายละเอียดจะลง 7.7
+149) Origin Allowlistและ CSRF Origin Checkคล้ายแต่คนละ Purpose
+CORS:
+who can read response in browser
+
+CSRF check:
+did state-changing request originate from trusted site?
+
+150) APIแบบ Bearer Tokenใน Authorization Header
+ถ้า Tokenไม่ได้ส่งอัตโนมัติโดย Browser
+
+CSRF Riskต่ำลงมาก
+
+เพราะ attacker siteไม่มี Tokenไปใส่ Header
+
+แต่:
+XSS token theft
+
+ยังสำคัญ
+151) Cookie Session
+Browserส่ง Credentialอัตโนมัติ
+
+CSRFต้องคิดจริงจัง
+152) BFF Pattern
+Browser:
+same-origin cookie → BFF
+
+BFFคุย Backendด้วย Token
+
+สามารถลด CORS Complexityได้มาก
+153) Browser-facing Architectureที่เรียบง่าย
+เช่น:
+Browser
+↓ https://example.com
+Nginx/BFF
+├→ frontend
+└→ /api backend
+
+Same-Origin
+
+มักง่ายต่อ:
+cookies
+CORS
+CSRF policy
+
+แต่ CSRFยังต้องดู
+154) Microservicesไม่ควรถูก expose Browserทุกตัว
+ไม่ดี:
+browser
+→ user-service
+→ booking-service
+→ payment-service
+
+แต่ละตัว CORS/Auth/Public Attack Surfaceเพิ่ม
+155) Better Often
+Browser
+↓
+Gateway/BFF
+↓
+internal services
+
+ทำ Public Surfaceเล็กลง
+156) Internal Servicesไม่ต้อง CORS
+เพราะ Browserไม่ได้เรียกตรง
+
+ช่วย simplify Architecture
+157) Browser Security Modelควรมี Layer
+Origin
+↓
+SOP
+↓
+CORS
+↓
+Cookies/SameSite
+↓
+CSRF
+↓
+CSP/XSS controls
+
+แต่แต่ละ Layerแก้คนละปัญหา
+158) อย่าจำว่า CORS = allow domain
+ต้องเข้าใจว่า:
+Serverประกาศสิทธิ์ให้ Browserเปิดเผย Responseกับ JavaScriptจาก Originหนึ่ง
+
+นี่แม่นกว่า
+159) Common Anti-pattern — Allow * everywhere
+Developmentสะดวก
+
+Production Sensitive APIเสี่ยง/ไม่จำเป็น
+160) Common Anti-pattern — Reflect Origin blindly
+เท่ากับ allowทุก Originถ้า Credentials enabled
+161) Common Anti-pattern — Use CORS as authentication
+Attackerใช้ curlได้
+162) Common Anti-pattern — Disable CORS in browser
+Developerติด Extension:
+disable CORS
+
+แล้วคิดว่า Fixแล้ว
+
+มันแค่ปิด Security Controlฝั่งเครื่องเรา
+
+Usersจริงยังพัง
+163) Common Anti-pattern — mode: no-cors
+ไม่ได้ทำให้ JSON APIใช้งานได้ปกติ
+164) Common Anti-pattern — wildcard subdomainsโดยไม่ inventory
+Subdomain takeover risk
+165) Common Anti-pattern — Forget Preflight
+Backendรองรับ POSTแต่ OPTIONS 404
+
+Browserพัง
+166) Common Anti-pattern — Auth blocks OPTIONS
+Browserไม่ไป Requestจริง
+167) Common Anti-pattern — CORS headers only on 200
+401/500กลายเป็น debugยาก
+168) Common Anti-pattern — Duplicate CORS Layer
+Nginx + Express + API Gatewayต่างคนต่างตั้ง
+
+เกิด conflict
+169) Common Anti-pattern — allow Originด้วย string suffixไม่ปลอดภัย
+เช่น:
+origin.endsWith("example.com")
+
+อาจ match:
+evil-example.com
+
+ตาม logic
+
+ต้อง validate boundaryถูก
+170) Common Anti-pattern — confuse SameSiteกับ Same-Origin
+Cookieกับ CORSคนละ rule set
+171) Common Anti-pattern — CORSผ่านแล้วคิดว่า API secure
+ยังต้อง Authentication/Authorizationเสมอ
+172) CORS Production Checklist
+ถาม:
+Which origins actually need browser access?
+Are credentials needed?
+Which methods?
+Which headers?
+
+173) ต่อ:
+Who handles OPTIONS?
+Are errors getting CORS headers?
+Is caching aware of Origin?
+
+174) Origin Checklist
+ตรวจ:
+scheme
+host
+port
+
+ไม่ใช่ดูแค่ Domainชื่อคล้ายกัน
+175) Credentials Checklist
+ถ้าใช้ Cookie Cross-Origin:
+credentials: include?
+Allow-Credentials?
+exact Allow-Origin?
+Cookie SameSite/Secure?
+
+176) Proxy Checklist
+Does Nginx forward Origin?
+Does proxy strip headers?
+Does gateway inject duplicate headers?
+
+177) Cache Checklist
+ถ้า Dynamic Origin:
+Vary: Origin?
+
+ถ้า User-specific response:
+private/no-store?
+
+178) Security Checklist
+CORS is not auth
+Server validates user
+Server validates permissions
+CSRF handled separately
+
+179) Example Architecture A — Same Origin
+Browser
+↓
+https://example.com
+├→ /
+└→ /api
+
+ข้อดี:
+minimal CORS
+simpler cookies
+
+180) Architecture B — Separate API Domain
+Browser
+↓
+https://app.example.com
+↓
+https://api.example.com
+
+ต้องออกแบบ:
+CORS
+credentials
+cookie policy
+CSRF
+
+อย่างชัด
+181) Architecture C — Third-party API
+Browser
+↓
+api.vendor.com
+
+ต้องพึ่ง Vendor CORS Policy
+
+ถ้า Vendorไม่เปิด Browser CORS:
+call through backend
+
+อาจเหมาะกว่า
+182) ทำไม Backend Proxyแก้ CORSได้
+Browserเรียก:
+/api/vendor
+
+Same Origin
+
+Backendค่อยเรียก Vendor:
+server-to-server
+
+CORSไม่เกี่ยวฝั่งนั้น
+183) แต่ Proxyต้องไม่กลายเป็น Open Proxy
+ไม่ควรมี:
+/proxy?url=https://anything.com
+
+โดยไม่ validate
+
+อาจเกิด SSRF
+
+เรื่องนี้จะลง Securityบทหลัง
+184) Browser DevTools
+เวลา Debug CORSดู:
+Request URL
+Origin
+OPTIONS
+Response headers
+Cookie
+Status
+
+185) Console Errorเป็น Hint ไม่ใช่ Root Causeทั้งหมด
+Browserมักพูด:
+CORS policy blocked...
+
+แต่ Root Causeอาจเป็น:
+500
+redirect
+auth middleware
+proxy
+
+186) Curlช่วยแยก Serverจาก Browser
+เช่น:
+curl -i \
+  -H "Origin: https://app.example.com" \
+  https://api.example.com/data
+
+ดู Response Headers
+187) Preflight Test Concept
+curl -i -X OPTIONS \
+  -H "Origin: https://app.example.com" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: Content-Type,Authorization" \
+  https://api.example.com/orders
+
+ช่วย Debug Server-side CORS
+188) แต่ curlไม่ enforce CORS
+เราใช้มันเพื่อ inspect Headersเท่านั้น
+
+Browserยังเป็นคน enforceจริง
+189) Environment Variablesสำหรับ CORS
+เช่น:
+CORS_ALLOWED_ORIGINS
+
+ควร parseเป็น Exact Origins
+
+ไม่ใช้ Free-form configที่ผิดง่าย
+190) Fail Closed
+ถ้า CORS Configหาย Production
+
+ควร:
+deny cross-origin
+
+ดีกว่า default:
+*
+
+สำหรับ Sensitive APIs
+191) Development Convenienceไม่ควรเปลี่ยน Production Default
+Dev:
+allow localhost
+
+Prod:
+explicit domains only
+
+192) CORS Tests
+ควร Test:
+allowed origin succeeds
+disallowed origin cannot read
+credentials work
+preflight works
+
+193) Negative Testสำคัญ
+เช่น:
+Origin: https://attacker.example
+
+Serverไม่ควรตอบ Allow-Originเป็น attacker domain
+194) CORS Testไม่แทน Authorization Test
+ยังต้อง Testว่า attackerเรียกผ่าน curlแล้ว:
+401/403
+
+ตามสิทธิ์
+195) Browser Threat Model
+คิดเสมอว่า:
+Userอาจเปิดหลาย websitesพร้อมกัน
+
+หนึ่งเว็บไม่ควรอ่านข้อมูลอีกเว็บได้โดยอิสระ
+
+นี่คือรากของ SOP
+196) CORSเป็น Exception Mechanism
+SOP defaultคือ:
+cross-origin JavaScript access restricted
+
+CORSคือ:
+server explicitly grants selected access
+
+197) ดังนั้น CORS Policyควรเล็ก
+เหมือน Firewall:
+allow only what is needed
+
+แม้มันไม่ใช่ Firewallแท้ ๆ
+198) Originไม่ได้บอก “ใคร”
+จำ:
+Origin
+→ where the page came from
+
+Authentication
+→ who the user is
+
+Authorization
+→ what user can do
+
+สามอย่างคนละเรื่อง
+199) Cookieไม่ได้บอกว่า Origin trustedเสมอไป
+Browserอาจส่ง Cookieตาม Domain/SameSite Rules
+
+Serverยังต้อง:
+verify session
+check CSRF
+authorize
+
+200) Mental Model: Same-Origin Policy
+Browserไม่ควรให้ JavaScriptจากเว็บไซต์หนึ่งอ่านข้อความของอีกเว็บไซต์ได้โดยอิสระ
+
+201) Mental Model: CORS
+CORS คือการที่ Serverบอก Browserว่า JavaScriptจาก Originใดได้รับอนุญาตให้อ่าน Responseได้
+
+202) Mental Model: Preflight
+Browserถาม Serverก่อนว่า Request Cross-Originแบบนี้ได้รับอนุญาตไหม ก่อนส่ง Requestจริงบางประเภท
+
+203) Mental Model: Credentials
+CORS says:
+Can JS read response?
+
+Cookie says:
+Should browser attach credential?
+
+Auth says:
+Is credential valid?
+
+Authorization says:
+Can this identity perform this action?
+
+ต้องแยก 4 ชั้นนี้ให้ออก
+204) End-to-End Example
+https://app.example.com
+↓ fetch credentials include
+https://api.example.com/profile
+
+Browser:
+1 check cross-origin
+2 possibly preflight
+3 send cookie if cookie rules allow
+
+Server:
+4 validate session
+5 authorize resource
+6 process request
+7 return CORS headers
+
+Browser:
+8 inspect CORS response
+9 expose or hide response from JS
+
+นี่คือภาพที่ควรอยู่ในหัวเวลา Debug
+สรุป 7.6
+Originประกอบด้วย:
+scheme
+host
+port
+
+Same-Origin Policy ทำหน้าที่ป้องกันไม่ให้ JavaScriptจาก Originหนึ่งอ่านข้อมูลของอีก Originได้โดยอิสระ
+
+CORS เป็นกลไกที่ Serverใช้อนุญาต Cross-Origin Browser Access ผ่าน Headers เช่น:
+Access-Control-Allow-Origin
+Access-Control-Allow-Methods
+Access-Control-Allow-Headers
+Access-Control-Allow-Credentials
+
+ส่วน Preflight คือ:
+OPTIONS
+↓
+ถาม serverก่อน
+↓
+real request
+
+สิ่งที่ต้องจำให้แม่นที่สุดคือ:
+CORS ไม่ได้ป้องกัน API จาก attacker ที่เรียกผ่าน curl, Postman หรือ Server โดยตรง ดังนั้น API ต้องมี Authentication, Authorization และ Validation ของตัวเองเสมอ
+
+และอีกข้อ:
+CORS, Cookies, SameSite, CSRF และ Authentication เกี่ยวข้องกัน แต่เป็น Security Controls คนละหน้าที่ ต้องไม่ใช้แทนกัน
+
+
+7.7 CSRF, XSS & Browser-side Attack Fundamentals แบบลงลึก
+บทนี้จะเจาะ 2 ช่องโหว่ฝั่ง Browser ที่สำคัญมากคือ CSRF และ XSS ซึ่งมักถูกสับสนกัน แต่จริง ๆ แล้วโจมตีคนละแบบและต้องใช้วิธีป้องกันคนละชุด
+
+Mental Model:
+CSRF
+→ หลอก browser ของ user ให้ส่ง request ที่ user ไม่ได้ตั้งใจ
+
+XSS
+→ ทำให้ attacker-controlled JavaScript รันอยู่ใน origin ของเว็บเรา
+
+หลักสำคัญที่สุดคือ:
+CSRF ใช้สิทธิ์ของ User ผ่าน Browser ส่วน XSS ยึด JavaScript Context ของเว็บเราโดยตรง
+
+1) CSRF คืออะไร
+CSRF = Cross-Site Request Forgery
+
+คือการที่ Attacker หลอก Browser ของ User ให้ส่ง Request ไปยังเว็บที่ User Login อยู่แล้ว
+
+เช่น:
+User login bank.com
+↓
+browser has session cookie
+↓
+user visits attacker.com
+↓
+attacker page causes request to bank.com
+↓
+browser attaches bank cookie automatically
+
+ถ้า Bank ไม่ป้องกัน CSRF อาจเกิด Side Effect ได้
+2) CSRF ไม่ได้ต้องขโมย Password
+Attackerไม่จำเป็นต้องรู้:
+password
+session ID
+OTP
+
+แค่ใช้ Browser ของ Victim เป็นตัวส่ง Request
+3) CSRF เกิดได้เพราะ Cookie ถูกส่งอัตโนมัติ
+เช่น Userมี:
+Cookie: session=abc123
+
+Browserรู้ว่าถ้า Requestไป Domainนั้นตาม Cookie Rules ก็ต้องแนบ Cookieให้
+
+นี่คือประเด็นสำคัญ
+4) ตัวอย่าง CSRF
+สมมติ Bankมี Endpoint:
+POST /transfer
+
+รับ:
+to=attacker
+amount=10000
+
+Attackerสร้าง:
+<form action="https://bank.example/transfer" method="POST">
+  <input name="to" value="attacker">
+  <input name="amount" value="10000">
+</form>
+
+<script>
+  document.forms[0].submit();
+</script>
+
+5) Victim ไม่จำเป็นต้องเห็นอะไร
+แค่เปิด attacker page
+
+Browserอาจ:
+submit form
++
+attach bank cookie
+
+โดยอัตโนมัติ
+6) CORS ป้องกัน CSRF ไหม
+ไม่สมบูรณ์
+
+เพราะ Attackerไม่จำเป็นต้องอ่าน Response
+
+เขาต้องการแค่:
+send state-changing request
+
+CORSเน้นว่า JavaScriptอ่าน Responseได้หรือไม่
+7) CSRF กับ Same-Origin Policy
+SOPอาจห้าม attacker.com อ่านข้อมูลจาก bank.com
+
+แต่ไม่ได้ห้ามทุกวิธีในการส่ง Request
+
+นี่คือเหตุผลที่ CSRFมีอยู่
+8) State-changing GET อันตราย
+ไม่ควรมี:
+GET /delete-account
+
+หรือ:
+GET /transfer?amount=1000
+
+เพราะ GET triggerได้ง่ายผ่าน:
+<img src="...">
+<a href="...">
+
+รวมถึง crawler/prefetch
+9) HTTP Method Semantics
+โดยทั่วไป:
+GET
+→ read
+
+POST
+→ create/action
+
+PUT/PATCH
+→ modify
+
+DELETE
+→ delete
+
+ช่วยลด accidental side effects
+
+แต่ POSTเองก็ยังโดน CSRFได้
+10) CSRF Protection หลัก
+มีหลาย Layer เช่น:
+SameSite cookies
+CSRF token
+Origin validation
+Referer validation
+re-authentication
+
+11) CSRF Token
+Serverสร้าง Random Secretที่ผูกกับ Session/User
+
+เช่น:
+csrf_token = random123
+
+Frontendต้องส่งกลับใน Request
+12) ทำไม Attackerส่งไม่ได้
+attacker.comไม่ควรสามารถอ่าน CSRF Tokenจาก bank.comได้เพราะ Same-Origin Policy
+
+จึงสร้าง Requestที่ validไม่ได้
+13) Synchronizer Token Pattern
+Serverเก็บ:
+session:
+  csrf_token = xyz
+
+HTML/Formได้รับ:
+<input type="hidden" name="_csrf" value="xyz">
+
+POSTกลับมา:
+cookie session
++
+csrf token
+
+Serverตรวจทั้งคู่
+14) CSRF Token ต้อง Random
+ไม่ใช้:
+csrf=user_id
+
+หรือ Timestampเดาง่าย
+
+ควรใช้ Cryptographically Secure Random
+15) CSRF Token ไม่ควรเป็น Authentication Token
+แยก Purpose
+
+ไม่ควร reuse:
+session token
+access token
+
+เป็น CSRF token
+16) Double Submit Cookie Pattern
+อีก Patternคือ:
+csrf cookie = random
+
+JavaScriptอ่านค่าแล้วส่ง:
+X-CSRF-Token: random
+
+Serverตรวจ:
+cookie value == header value
+
+17) CSRF Cookie ต้องไม่ HttpOnlyใน Double Submitบางแบบ
+เพราะ JavaScriptต้องอ่าน
+
+แต่ Session Cookieยังควร HttpOnly
+
+นี่เป็นคนละ Cookie
+18) Signed Double Submit
+ดีกว่า plain double-submitในบาง threat model
+
+โดย bind tokenกับ Session/Secretเพื่อป้องกัน Cookie injectionบางประเภท
+19) SameSiteช่วย CSRFยังไง
+ถ้า Session Cookie:
+SameSite=Lax
+
+หรือ:
+SameSite=Strict
+
+Browserจะจำกัดการส่ง Cookieใน Cross-site contexts
+
+ลด CSRF Riskมาก
+20) SameSite=Strict
+Securityสูง แต่ UXอาจกระทบ
+
+เช่น Userกดลิงก์มาจากเว็บอื่นแล้ว Sessionอาจไม่ถูกส่งในบาง Flow
+21) SameSite=Lax
+เป็น Balanceที่ดีในหลายเว็บไซต์
+
+ช่วย block Cross-site POST formบางกรณี
+22) SameSite=None
+ต้องใช้:
+Secure
+
+และเปิด Cross-site Cookie Behaviorมากกว่า
+
+จึงต้องมี CSRF controlsอื่นเข้มขึ้น
+23) SameSiteไม่ควรเป็น Controlเดียว
+เพราะ:
+browser behavior
+subdomain/same-site nuance
+legacy compatibility
+special flows
+
+อาจทำให้มีช่องว่าง
+
+Defense in Depthดีกว่า
+24) Origin Header Validation
+สำหรับ State-changing Request สามารถตรวจ:
+Origin: https://app.example.com
+
+ว่าเป็น Trusted Originหรือไม่
+25) ถ้า Originเป็น attacker.com
+Reject
+
+เช่น:
+403 Forbidden
+
+26) Referer Validation
+ถ้า Originไม่มีในบาง context
+
+อาจดู:
+Referer:
+
+เป็น fallback
+
+แต่ต้อง parseอย่างปลอดภัย
+27) Origin/Referer Validationไม่ใช่ CORS
+นี่คือ Server-side CSRF Defense
+
+Serverใช้เพื่อ reject Request
+
+ไม่ใช่ Browser sharing policy
+28) Custom Headerช่วยได้บางกรณี
+เช่น:
+X-CSRF-Token: ...
+
+HTML Formธรรมดาส่ง Custom Headerไม่ได้
+
+Attackerต้องใช้ fetch/XHRซึ่งโดน SOP/CORS Constraints
+29) แต่ XSSทำลาย CSRF Defenseได้
+ถ้า Attackerมี JavaScriptรันบนเว็บเรา
+
+เขาอาจ:
+อ่าน CSRF token
+ส่ง valid request
+
+ดังนั้น XSSมักทรงพลังกว่า CSRF
+30) Re-authentication สำหรับ Sensitive Actions
+เช่น:
+change password
+change bank account
+disable MFA
+
+อาจ require:
+password again
+MFA
+
+ช่วยลด impactแม้ CSRFบางส่วนหลุด
+31) CSRFไม่ค่อยเป็นปัญหากับ Bearer Tokenที่ Browserไม่ส่งอัตโนมัติ
+ถ้า Access Tokenอยู่ Memoryและ JSต้องใส่:
+Authorization: Bearer ...
+
+Attacker siteไม่มี Token
+
+CSRF Riskลดลงมาก
+32) แต่ XSS Riskเพิ่มความสำคัญ
+เพราะถ้า XSSอ่าน Tokenใน JS Contextได้:
+token theft
+
+ได้โดยตรง
+33) Cookie Auth vs Token Header
+Cookie:
+CSRF needs attention
+XSS still dangerous
+
+JS-readable token:
+less CSRF
+more token-exfiltration exposure under XSS
+
+ต้องเลือกจาก Threat Model
+34) XSS คืออะไร
+XSS = Cross-Site Scripting
+
+คือช่องโหว่ที่ทำให้ Attacker-controlled Scriptรันใน Originของเว็บเรา
+
+เช่น:
+<script>
+  maliciousCode()
+</script>
+
+ถูก Browserตีความเป็น Codeของเว็บไซต์เรา
+35) ทำไม XSSร้ายแรง
+Scriptที่รันใน Originเราอาจทำ:
+call APIs
+read DOM
+read localStorage
+read non-HttpOnly cookies
+modify page
+steal displayed data
+
+36) ถ้า Session Cookie HttpOnlyแล้ว XSSยังอันตรายไหม
+ยังอันตรายมาก
+
+XSSอาจ:
+fetch("/api/delete-account", {
+  method: "POST"
+});
+
+Browserแนบ HttpOnly Cookieให้อัตโนมัติ
+
+Scriptไม่ต้องรู้ Cookie Value
+37) HttpOnlyป้องกันอะไร
+ช่วยป้องกัน:
+direct cookie theft via document.cookie
+
+แต่ไม่ได้ป้องกัน:
+authenticated actions in victim browser
+
+38) XSS Typesหลัก
+มักแบ่ง:
+Stored XSS
+Reflected XSS
+DOM-based XSS
+
+39) Stored XSS
+Payloadถูกบันทึกในระบบก่อน
+
+เช่น Userใส่ Comment:
+<script>alert(1)</script>
+
+Serverบันทึกลง DB
+40) วันหลัง Adminเปิด Comment
+Browser render payload
+
+Scriptรันใน Admin Session
+
+Impactอาจสูงมาก
+41) Stored XSSมักร้ายแรง
+เพราะกระทบ Usersหลายคน
+
+และ Payload persistอยู่
+42) Reflected XSS
+Payloadมาจาก Requestแล้วถูกสะท้อนใน Responseทันที
+
+เช่น:
+/search?q=<script>...</script>
+
+Server renderค่า qตรง ๆลง HTML
+43) Attackerส่ง Linkให้ Victim
+Victimเปิด:
+https://example.com/search?q=malicious-payload
+
+Payloadรัน
+44) DOM-based XSS
+เกิดจาก JavaScriptฝั่ง Clientจัดการ Dataไม่ปลอดภัย
+
+เช่น:
+element.innerHTML = location.hash;
+
+Attackerควบคุม URL Fragment
+45) Serverอาจไม่เคยเห็น Payload
+นี่คือเหตุผลเรียก DOM-based
+
+Bugอยู่ใน Client-side JavaScript
+46) Source กับ Sink
+ใน DOM XSSมี Concept:
+Source
+→ attacker-controlled data
+
+Sink
+→ dangerous DOM/API operation
+
+47) Sourcesตัวอย่าง
+location.href
+location.search
+location.hash
+postMessage
+localStorage
+API responses
+
+ถ้า Attackerควบคุมได้
+48) Dangerous Sinks
+เช่น:
+innerHTML
+outerHTML
+insertAdjacentHTML
+document.write
+eval
+new Function
+
+ต้องระวังมาก
+49) Output Encoding
+หลักสำคัญในการป้องกัน XSSคือ:
+Encode Dataตาม Output Context
+
+เช่น Textใน HTMLต้อง Escape:
+<
+>
+&
+"
+'
+
+ตาม Context
+50) Example
+User Name:
+<script>alert(1)</script>
+
+ควรถูก renderเป็น Text:
+&lt;script&gt;alert(1)&lt;/script&gt;
+
+Browserจึงแสดงข้อความแทน Execute
+51) Context Matters
+Encodingสำหรับ:
+HTML text
+HTML attribute
+JavaScript
+URL
+CSS
+
+ไม่เหมือนกันเสมอ
+
+อย่าใช้ Escape Functionเดียวกับทุก Contextแบบไม่คิด
+52) Frameworkช่วยมาก
+Reactโดยปกติ Escape Stringที่ Render
+
+เช่น:
+<div>{userInput}</div>
+
+Reactจะไม่ตีความ Stringนั้นเป็น HTML Scriptโดยตรง
+53) Example
+const name = "<script>alert(1)</script>";
+
+return <div>{name}</div>;
+
+โดยปกติ React renderเป็น Text
+
+นี่เป็น Safe Defaultที่ดี
+54) แต่ Reactไม่ได้ทำให้ XSSเป็นไปไม่ได้
+ถ้าใช้ Escape Hatch เช่น:
+dangerouslySetInnerHTML
+
+Riskกลับมา
+55) dangerouslySetInnerHTML
+ตัวอย่าง:
+<div
+  dangerouslySetInnerHTML={{
+    __html: userContent
+  }}
+/>
+
+Reactจงใจตั้งชื่อว่า dangerously...
+
+เพราะเป็น Dangerous Sink
+56) ถ้า userContent มาจาก CMSล่ะ
+อย่าคิดว่า CMS = Trustedโดยอัตโนมัติ
+
+CMSอาจ:
+ถูก compromise
+มี editorหลายคน
+รับ rich textจาก user
+
+ต้องกำหนด Trust Level
+57) HTML Sanitization
+ถ้าต้อง Render User/CMS HTMLจริง
+
+ใช้ Sanitizerที่เชื่อถือได้
+
+Concept:
+input HTML
+↓
+sanitize
+↓
+allowed tags/attributes only
+↓
+render
+
+58) Allowlist Sanitization
+เช่นอนุญาต:
+p
+strong
+em
+ul
+li
+a
+
+บล็อก:
+script
+iframe
+event handlers
+
+ตาม Requirement
+59) Sanitizationซับซ้อนมาก
+เพราะ HTML/SVG/MathML/URLsมี Edge Casesเยอะ
+
+อย่าเขียน Regexเองประมาณ:
+remove "<script>"
+
+ไม่พอ
+60) Regexไม่ใช่ HTML Sanitizer
+Payloadไม่จำเป็นต้องใช้ <script>
+
+ตัวอย่างอาจผ่าน:
+<img src=x onerror="...">
+
+หรือ SVG/URL vectors
+
+ดังนั้นใช้ maintained sanitizer
+61) Event Handler Attributes
+เช่น:
+<img onerror="...">
+
+สามารถ Execute JavaScript
+
+Sanitizerต้องจัดการ
+62) javascript: URLs
+เช่น:
+<a href="javascript:...">
+
+ต้องตรวจ URL Scheme
+
+ไม่ใช่แค่ HTML Tag
+63) Safe URL Schemes
+เช่นอนุญาต:
+https:
+http:
+
+ตาม Use Case
+
+อาจ allow:
+mailto:
+tel:
+
+ถ้าจำเป็น
+64) User-controlled URL
+เช่น Avatar:
+src=userValue
+
+ควร validate Protocol/Source
+
+แม้ Framework Escape Attributeให้
+
+ยังมี Security/Privacy concernsอื่น
+65) eval
+ไม่ควรใช้กับ Untrusted Data
+
+เช่น:
+eval(userInput);
+
+คือ Execute Codeตรง ๆ
+66) new Function()
+คล้าย eval
+
+ถ้ามี User-controlled Stringเข้าไป
+
+Riskสูง
+67) setTimeout(string)
+เช่น:
+setTimeout("doSomething()", 1000);
+
+String formมี code execution semanticsใน browser
+
+ใช้ Functionแทน
+68) Template Injection
+ถ้า Template Engineเอา User Inputไปเป็น Template Code
+
+อาจเกิด Injection/XSS
+
+ต้องแยก:
+template code
+data
+
+ชัดเจน
+69) Server-side Rendering
+Next.js SSRเองไม่ทำให้ XSSหาย
+
+ถ้าเรา render Raw HTMLอย่างไม่ปลอดภัย
+
+Browserยัง executeได้
+70) Hydrationไม่ได้เป็น Security Barrier
+Dataที่ embedเข้า HTML/Scriptต้อง serializeปลอดภัย
+71) JSON inside <script>
+ถ้า embed Dataเอง:
+<script>
+  window.DATA = ...
+</script>
+
+ต้องใช้ safe serializer
+
+ไม่ concatenate User Stringตรง ๆ
+72) XSSผ่าน API Data
+API Responseอาจเป็น JSONที่มี:
+"<img onerror=...>"
+
+JSONเองไม่ execute
+
+แต่ถ้า Frontendเอาไปใส่ innerHTML
+
+ก็กลายเป็น XSSได้
+73) Trusted Types
+Browser Security Featureขั้นสูงที่ช่วยควบคุม DOM XSS Sinks
+
+เช่นบังคับว่า:
+innerHTML
+
+ต้องรับ TrustedHTMLที่ผ่าน Policy
+
+เหมาะกับ Appขนาดใหญ่บางระบบ
+74) CSP คืออะไร
+CSP = Content Security Policy
+
+เป็น Security Headerช่วยจำกัดว่า Pageสามารถโหลด/Execute Contentจากไหน
+
+เช่น:
+Content-Security-Policy: script-src 'self'
+
+75) CSP ช่วย XSSอย่างไร
+ถ้ามี XSS Injectionแต่ Browserไม่ยอม Execute Inline Script
+
+Impactอาจลดลง
+
+เป็น Defense in Depth
+76) แต่ CSPไม่แทน Output Encoding/Sanitization
+Root Causeยังต้องแก้
+
+CSPเป็น Safety Net
+77) CSP script-src
+เช่น:
+'self'
+
+อนุญาต Scriptsจาก Originตัวเอง
+78) unsafe-inline
+ถ้า CSPมี:
+'unsafe-inline'
+
+Inline Scripts/Handlersอาจ executeได้
+
+ทำให้ XSS Protectionอ่อนลงมาก
+79) Nonce-based CSP
+Serverสร้าง Random Nonceต่อ Response
+
+เช่น:
+<script nonce="abc123">
+
+CSP:
+script-src 'nonce-abc123'
+
+เฉพาะ Scriptที่มี Nonceถูกต้องจึงรัน
+80) Attacker Inject Scriptไม่มี Nonce
+จึง Browser block
+
+ถ้า Implementationถูก
+81) CSP Nonceต้อง Randomต่อ Response
+ไม่ควร hardcode:
+nonce=123
+
+ทุกหน้า
+
+เพราะ Attackerรู้แล้ว reuseได้
+82) Hash-based CSP
+สามารถ allow Inline Scriptจาก Hashที่กำหนดไว้
+
+เหมาะกับ Static Inline Codeบางชนิด
+83) CSP Report-Only
+ใช้:
+Content-Security-Policy-Report-Only
+
+เพื่อดู Violationsก่อน enforceจริง
+
+ช่วย rolloutโดยไม่ทำเว็บพังทันที
+84) CSP Deploymentต้องระวัง
+เว็บที่มี:
+analytics
+tag manager
+third-party widgets
+inline scripts
+
+อาจพังถ้า Policyเข้มทันที
+
+ควร inventoryก่อน
+85) XSSผ่าน Third-party Script
+ถ้าเราโหลด:
+<script src="https://thirdparty.example/widget.js">
+
+Scriptนั้นรันใน Originเรา
+
+มีสิทธิ์สูงมาก
+86) Third-party Script = Code Execution Trust
+จึงต้องลดจำนวน Vendor Scripts
+
+โดยเฉพาะ:
+login
+admin
+payment
+
+Pages
+87) Supply Chain XSS
+ถ้า Third-party Scriptถูก compromise
+
+Attackerได้ Code Executionในหน้าเรา
+
+แม้ Codeเราไม่มี XSSเอง
+88) SRI
+SRI = Subresource Integrity
+
+ใช้ Hashตรวจว่า External Static Resourceตรงกับ Versionที่คาดไว้
+
+เช่น:
+<script
+  src="..."
+  integrity="sha384-..."
+></script>
+
+ช่วยบาง Supply-chain scenarios
+89) SRIมีข้อจำกัด
+ใช้ยากกับ Scriptsที่เปลี่ยน Contentตลอด
+
+และไม่ได้แก้ทุก Third-party Risk
+90) CSPกับ Third-party Scripts
+สามารถจำกัด Sourcesที่อนุญาต
+
+แต่ถ้า allow Providerนั้น แล้ว Providerถูก compromise:
+CSPยังอนุญาต
+
+จึงยังต้อง Trust Vendor
+91) DOMPurify
+ตัวอย่าง Libraryที่นิยมสำหรับ HTML Sanitizationใน Browser/JS ecosystem
+
+Conceptคือใช้ maintained sanitizerแทนเขียนเอง
+
+แต่ต้อง configureตาม Context
+92) Rich Text Editor
+ถ้า Userเขียน Rich Content
+
+ต้องคิด Pipeline:
+editor input
+↓
+sanitize before/after storage
+↓
+sanitize/encode on output
+
+93) Sanitizeตอน Inputอย่างเดียวพอไหม
+ไม่ควรพึ่งอย่างเดียว
+
+เพราะ:
+sanitizer rulesเปลี่ยน
+legacy bad data
+other input paths
+
+Output-side safetyยังสำคัญ
+94) Store Rawหรือ Sanitized
+มี Trade-off
+
+Store Raw:
+สามารถ re-sanitizeภายหลัง
+แต่ data dangerousต้องป้องกันดี
+
+Store Sanitized:
+ง่ายตอน render
+แต่ lose original
+
+บางระบบเก็บทั้งสองแบบโดยแยกชัด
+95) Stored XSSกับ Admin
+Userธรรมดาอาจใส่ Payloadใน:
+name
+address
+support ticket
+
+แล้ว Admin Dashboard Render Raw
+
+กลายเป็น Privilege Escalationผ่าน Admin Session
+96) ดังนั้น Internal/Admin UIก็ต้อง XSS-safe
+ไม่ใช่แค่ Public Website
+97) XSSใน Email HTML
+ถ้า User Contentถูกนำไปสร้าง HTML Email
+
+Email Clientsมี Security Modelต่างกัน
+
+แต่ยังต้อง escape/sanitizeเพื่อป้องกัน HTML Injection/Phishing-like issues
+98) HTML Injection ≠ XSSเสมอไป
+บาง Clientไม่รัน Script
+
+แต่ Attackerอาจ inject:
+fake button
+fake payment message
+hidden content
+
+ยังเป็น Security/Phishing Risk
+99) XSSกับ localStorage
+ถ้า Access Tokenอยู่ localStorage
+
+XSSสามารถ:
+localStorage.getItem("token")
+
+แล้ว exfiltrateออกไป
+100) ถ้า Tokenอยู่ HttpOnly Cookie
+XSSอ่านตรง ๆไม่ได้
+
+แต่ยังใช้ Sessionทำ Actionใน Browserได้
+
+Differenceสำคัญคือ:
+token exfiltration
+vs
+session riding
+
+101) Token Exfiltration
+ถ้า Attackerขโมย Tokenออกไปได้
+
+เขาสามารถใช้จากเครื่องตัวเองต่อจนหมดอายุ
+
+Impactอาจยาวกว่าแค่ XSS page session
+102) HttpOnlyช่วยลด Persistent Account Hijackingบางกรณี
+แต่ไม่แก้ XSSต้นเหตุ
+103) CSRFกับ XSSสัมพันธ์กันอย่างไร
+CSRF Defenseมักอาศัยว่า Attackerอ่านข้อมูลใน Originเราไม่ได้
+
+แต่ XSSทำให้ Attackerกลายเป็น Scriptใน Originเรา
+
+จึง bypass CSRF controlsจำนวนมากได้
+104) สรุป Power
+โดยทั่วไป:
+XSS
+→ often more powerful than CSRF
+
+เพราะได้ Same-Origin JavaScript Context
+105) Reflected XSS Example Concept
+Bad Server:
+res.send(`
+  <h1>Search: ${req.query.q}</h1>
+`);
+
+ถ้า qไม่ escape
+
+เกิด XSS
+106) Safe Rendering
+ใช้ Template Engineที่ auto-escape
+
+หรือ escapeก่อน output
+107) Stored XSS Example Concept
+User input → DB → Admin UI
+
+ทุก Boundaryต้องรักษา Dataเป็น Data
+
+ไม่ใช่ Code
+108) DOM XSS Example
+Bad:
+result.innerHTML = new URLSearchParams(location.search).get("q");
+
+Safer:
+result.textContent = value;
+
+109) textContent vs innerHTML
+ถ้าต้องการแสดง Text:
+use textContent
+
+ไม่ใช้ innerHTML
+
+นี่เป็น Safe API Choiceที่ดี
+110) React equivalent
+ใช้:
+<span>{value}</span>
+
+ไม่ใช้ raw HTMLถ้าไม่จำเป็น
+111) Vue/Angularก็มี Escape defaults
+แต่ก็มี escape hatches เช่น raw HTML directives
+
+ต้องรู้ Frameworkของตัวเอง
+112) Markdown
+Markdown contentก็อาจนำไป XSSได้ถ้า Rendererอนุญาต Raw HTMLหรือ unsafe links
+
+ต้อง configure:
+sanitize
+disable raw HTML
+safe link schemes
+
+113) SVG
+SVGสามารถมี Active Contentบางประเภท
+
+การอนุญาต SVG Upload/Inline SVGต้องระวัง
+
+ไม่ถือว่าเป็น “รูปภาพธรรมดา”เสมอไป
+114) File Upload + XSS
+ถ้า User upload HTML/SVGแล้วเรา serveจาก:
+same origin
+
+Browserอาจ execute Active Content
+115) Safer Upload Architecture
+Serve untrusted uploadsจาก:
+separate domain/origin
+
+เช่น:
+uploads.example-cdn.com
+
+โดยไม่มี Auth Cookiesของ main app
+
+ช่วย isolation
+116) Content-Disposition
+สำหรับไฟล์ที่ไม่ควร render inline
+
+อาจใช้:
+Content-Disposition: attachment
+
+ช่วยลด Browser rendering risk
+
+ตาม Use Case
+117) MIME Type
+ต้อง set:
+Content-Type
+
+ถูกต้อง
+
+และใช้:
+X-Content-Type-Options: nosniff
+
+เพื่อช่วยลด MIME sniffing
+118) nosniff
+Browserไม่ควรเดา Content Typeเป็น Script/Styleนอกเหนือจากที่ระบุในบาง context
+
+เป็น Defense Layer
+119) Template Context Escape
+ตัวอย่าง:
+<div title="{{ userInput }}">
+
+ต้องใช้ Attribute-context escaping
+
+ไม่ใช่เอา HTML text escapingแบบผิด context
+
+Frameworkมักช่วย แต่ต้องไม่ bypass
+120) JavaScript Context Injection
+อันตราย:
+<script>
+  const name = 'USER_INPUT';
+</script>
+
+ถ้า concatenateเอง
+
+Userอาจปิด quoteแล้ว inject code
+
+ใช้ safe JSON serializationแทน
+121) URL Context
+เช่น:
+<a href="USER_INPUT">
+
+Escapeอย่างเดียวอาจไม่พอ
+
+ต้อง validate URL Schemeด้วย
+122) CSS Context
+User-controlled CSSก็มี Security/UX Risks
+
+อย่า inject arbitrary Style/Stylesheetโดยไม่คิด
+123) DOM Clobbering
+Advanced browser attack classที่ HTML elementsสามารถเปลี่ยน behaviorของ global properties/DOM references
+
+นี่เป็นอีกเหตุผลไม่ treat untrusted HTMLเป็น harmless
+124) Prototype Pollutionกับ XSS
+ใน JS ecosystem prototype pollutionบางกรณี chainไป XSS/logic bugsได้
+
+จะอยู่ใน Injection/System Securityเพิ่มเติมภายหลัง
+125) Open Redirectกับ XSS/Phishing
+Open Redirectไม่ใช่ XSSโดยตรง
+
+แต่ช่วย phishing/OAuth attacks
+
+เช่น:
+trusted.com/redirect?to=attacker.com
+
+Userเห็น Domain trustedแล้วกด
+126) XSS via postMessage
+ถ้า iframe/windowรับ messageแล้วเอาไป:
+element.innerHTML = event.data;
+
+โดยไม่ตรวจ origin/sanitize
+
+เกิด DOM XSSได้
+127) Check event.origin
+และ validate Message Schema
+
+ไม่ใช่แค่:
+origin exists
+
+ต้อง exact trusted origin
+128) CSRF Token Leakage
+อย่าใส่ CSRF Tokenใน URLถ้าไม่จำเป็น
+
+อาจหลุดผ่าน:
+logs
+history
+referer
+analytics
+
+129) CSRF Tokenใน HTML
+ปกติอยู่ใน:
+hidden input
+meta tag
+JS bootstrap data
+
+แล้ว JSส่ง Header
+
+ถ้าหน้านั้นมี XSS Tokenก็ถูกอ่านได้อยู่ดี
+130) CSRF Tokenควร rotateไหม
+ขึ้นกับ Pattern
+
+อาจเป็น:
+per session
+per request
+
+Per-requestเข้มกว่าแต่ซับซ้อนกับ Back Button/multiple tabs
+
+Per-sessionง่ายกว่าและใช้แพร่หลาย
+131) One-time CSRF Token
+มี Security Benefitบางกรณี
+
+แต่ทำ UX/Concurrencyซับซ้อน
+
+ไม่จำเป็นทุก App
+132) CSRF Token Comparison
+ควร compareแบบปลอดภัยตาม implementation
+
+และ bindกับ Session/Userให้เหมาะ
+133) Login CSRF
+CSRFไม่ได้มีแค่ Actionหลัง Login
+
+Login endpointเองก็โดนได้
+
+Attackerอาจทำให้ Victim Loginเข้า Accountของ Attacker
+134) ผล Login CSRF
+Victimอาจกรอก:
+personal data
+payment info
+
+เข้า Accountของ Attackerโดยไม่รู้ตัว
+
+Social Login stateช่วยป้องกัน Flowนี้
+135) Logout CSRF
+Attackerทำให้ User Logout
+
+Impactมักต่ำกว่า Transfer Money
+
+แต่ยังเป็น nuisance/availability issue
+
+อาจป้องกันตาม Requirement
+136) Password Change CSRF
+ร้ายแรงถ้า Endpointไม่ require current password/CSRF token
+
+Attackerอาจเปลี่ยน Credentialของ Victim
+137) Email Change CSRF
+อาจนำไป Account Takeover
+
+Sensitive Actionควร:
+CSRF protection
+recent auth
+notification
+
+138) GET Requestไม่ควรมี Critical Side Effect
+ย้ำเพราะช่วยลด CSRF/accidental actionsมาก
+139) JSON API + Cookie Auth
+แม้ APIรับเฉพาะ:
+application/json
+
+ก็ควรมี CSRF Strategyชัด
+
+เช่น:
+CSRF token
+Origin validation
+SameSite
+
+ไม่ rely solely on preflight
+140) Origin Validation Pattern
+สำหรับ unsafe methods:
+POST
+PUT
+PATCH
+DELETE
+
+ตรวจว่า Originอยู่ Allowlist
+141) Requestsไม่มี Origin
+ต้องกำหนด Policy
+
+เช่น:
+same-origin browser forms
+older clients
+server-to-server
+
+อาจใช้ Referer fallbackหรือ token authแยก
+
+อย่า default allowแบบ blind
+142) API Clients
+ถ้ามีทั้ง Browser + Mobile + Server clients
+
+CSRF Logicควรผูกกับ Authentication Method
+
+เช่น:
+cookie auth
+→ CSRF check
+
+bearer auth
+→ different controls
+
+143) Double Authentication Pathsซับซ้อน
+Endpointเดียวรองรับ:
+cookie
++
+bearer
+
+ต้องระวังว่า CSRF middlewareรู้ว่า Requestกำลังใช้แบบไหน
+144) Session Cookie SameSiteกับ OAuth
+เราเรียนแล้วว่า OAuth callbackอาจต้อง Lax
+
+จึงต้อง balance:
+OAuth UX
+CSRF protection
+
+ไม่ตั้ง Strictแบบ blind
+145) XSS Prevention Strategy
+เริ่มจาก:
+auto-escaping framework
+
+แล้ว:
+avoid dangerous sinks
+sanitize unavoidable HTML
+CSP
+secure third-party scripts
+
+146) XSS Prevention Pyramid
+1 Don't generate raw HTML from untrusted input
+2 Use framework escaping
+3 Context-aware encoding
+4 Sanitization where raw HTML needed
+5 CSP as defense-in-depth
+
+147) ทำไม CSPอยู่ท้าย
+เพราะไม่ควรใช้ CSPแทนการแก้ Dangerous Rendering
+148) CSP Bypassเป็นไปได้ถ้า Policyอ่อน
+เช่น:
+unsafe-inline
+wide script domains
+JSONP-like endpoints
+
+ดังนั้น CSPต้อง designจริง
+149) Script Nonceกับ SSR
+Server-generated pagesสามารถสร้าง Nonceต่อ Request
+
+ส่งทั้ง:
+CSP header
+script nonce
+
+Frameworkบางตัวรองรับ
+150) Static Siteกับ Hash CSP
+ใช้ Hashสำหรับ known scriptsได้
+151) strict-dynamic
+CSP Featureขั้นสูงที่ใช้ร่วม Nonce/Hashเพื่อกำหนด Script Trust Chain
+
+มีประโยชน์ใน Appบางแบบ
+
+แต่ต้องเข้าใจ Browser Support/Architecture
+152) CSP Report
+Violation Reportช่วยหา:
+inline script
+unexpected third-party domain
+XSS attemptsบางประเภท
+
+แต่มี Noiseและ Privacy considerations
+153) Trusted Types
+ช่วย enforceว่า dangerous DOM sinksไม่รับ Stringดิบ
+
+เหมาะกับ large frontend codebasesที่ต้องการ systemic XSS defense
+154) React dangerouslySetInnerHTML Checklist
+ก่อนใช้ถาม:
+Data sourceคืออะไร?
+trustedจริงไหม?
+sanitizeแล้วหรือยัง?
+URL attributes safeไหม?
+CSPมีไหม?
+
+155) CMS HTML
+ถ้า CMSมีเฉพาะ Trusted Editors
+
+Riskต่ำกว่า Public User Input
+
+แต่ Accountของ Editorถูก compromiseก็ยัง injectได้
+
+Sanitizationยังมี Value
+156) Admin-entered HTML
+Adminไม่ได้แปลว่า “ปลอดภัย 100%”
+
+เพราะ:
+admin account compromise
+copy-paste malicious content
+insider
+
+ต้องกำหนด Trustอย่างมีเหตุผล
+157) Escape on Output Principle
+เก็บ Dataเป็น Data
+
+ตอนนำไปใช้ใน Contextใดค่อย encodeสำหรับ Contextนั้น
+
+Conceptนี้ robustมาก
+158) Sanitization vs Encoding
+จำ:
+Encoding
+→ show content as data/text
+
+Sanitization
+→ allow some safe HTML structure
+
+ถ้าไม่ต้องการ HTML:
+Encode ดีกว่า Sanitize
+
+159) Example
+Usernameไม่ควรมี HTMLเลย
+
+Renderเป็น Text
+
+ไม่ต้อง sanitizeให้ <b>รอด
+160) Rich Article Content
+อาจต้อง Preserve:
+p
+h2
+a
+strong
+
+จึงใช้ Sanitization
+161) Server-side Sanitization vs Client-side
+ถ้าข้อมูลจะถูกใช้หลาย Clients:
+
+Server-side Sanitizationช่วยให้ทุก Clientได้ safer content
+
+แต่ Clientยังต้องใช้ safe rendering
+162) Security Regression Tests
+ควรมี Testsว่า:
+<script> rendered as text
+unauthorized CSRF request rejected
+valid CSRF request allowed
+
+163) Negative XSS Tests
+เช่น Payloadsพื้นฐาน:
+<script>
+<img onerror>
+javascript:
+
+ใช้ใน test environmentเพื่อ verify sanitizer/rendering
+164) Automated Scanner
+DAST/Browser scannersช่วยหา XSSบางรูปแบบ
+
+แต่ DOM/business-specific casesอาจไม่เจอทั้งหมด
+
+Code Reviewยังสำคัญ
+165) Static Analysis
+Toolsสามารถ flag:
+innerHTML
+dangerouslySetInnerHTML
+eval
+
+เพื่อให้ Developer Review
+166) Code Review Checklist
+ถ้าเห็น:
+innerHTML
+raw HTML
+HTML parser
+postMessage
+URL rendering
+
+ควรถามเรื่อง XSS
+167) CSRF Middleware
+Frameworkหลายตัวมี built-in
+
+ควรใช้แทนสร้างเองถ้าได้
+
+เพราะมีรายละเอียดเรื่อง:
+token generation
+comparison
+session binding
+error handling
+
+168) SPA + API CSRF Pattern
+ตัวอย่าง:
+GET /csrf
+↓
+receive CSRF cookie/token
+↓
+POST /orders
+X-CSRF-Token: ...
+
+Serverตรวจ Session + Token
+169) BFF Pattern
+Browserคุย Same-Origin BFFด้วย Session Cookie
+
+BFFใช้ CSRF Protection
+
+จากนั้น BFFคุย APIsด้วย Bearer Token
+
+ช่วยแยก Concernsได้ดี
+170) API Gatewayไม่ควรแก้ XSSแทน Frontend
+XSSเกิดตอน Renderใน Browser
+
+Gatewayอาจมี WAFแต่ไม่รู้ Rendering Context
+
+ต้องแก้ที่ App
+171) WAFกับ XSS
+WAFอาจ block Payloadชัด ๆบางแบบ
+
+แต่ Encoding/Browser tricksทำให้ bypassได้
+
+WAFเป็น Defense-in-depthเท่านั้น
+172) WAFกับ CSRF
+WAFไม่ได้รู้ User Intentโดยตรง
+
+ไม่ใช่ replacementสำหรับ CSRF Token/Origin checks
+173) XSS Detection Logs
+CSP reports/WAF logsอาจเห็น suspicious payloads
+
+แต่ Logsอย่า render raw payloadใน Admin UIแบบ unsafe
+
+ไม่งั้น:
+security log viewer
+→ stored XSS
+
+ได้อีก
+174) Logging Untrusted Input
+Logเป็น Text dataได้
+
+แต่เวลาสร้าง Web Dashboardเพื่อดู Logsต้อง escapeอีกครั้ง
+175) Error Messages
+ถ้า Serverตอบ:
+Invalid input: USER_INPUT
+
+แล้วไม่ escape
+
+Error Pageเองอาจเป็น Reflected XSS
+176) Search Pages
+เป็นจุด classic:
+You searched for: <query>
+
+ต้อง auto-escape
+177) File Names
+User-controlled filenameสามารถไปโผล่ใน:
+HTML
+download list
+admin panel
+
+ต้อง escapeเช่นกัน
+178) Image Alt/Text
+แม้ดู innocuous ก็ต้องใช้ framework escaping
+
+อย่าต่อ HTML stringเอง
+179) XSS Impact Examples
+XSSสามารถ:
+create booking
+cancel booking
+change profile
+read visible PII
+send messages
+modify UI
+
+ในสิทธิ์ของ Victim
+180) Admin XSS Impact
+ถ้า Victimเป็น Admin:
+create admin
+export users
+change privileges
+
+อาจกลายเป็น Full Application Compromise
+181) XSSไม่ได้หมายถึง Alert Box
+Payload:
+alert(1)
+
+ใช้เพียง Proof-of-Concept
+
+Impactจริงร้ายแรงกว่านั้นมาก
+182) CSRF Impactขึ้นกับ Victim Privilege
+CSRFกับ Customer:
+cancel own order
+
+CSRFกับ Admin:
+change config
+
+Impactต่างกัน
+183) SameSiteกับ Subdomains
+Same-site rulesอาจถือ subdomainsว่า related
+
+ดังนั้นถ้า subdomainหนึ่ง compromised:
+CSRF assumptionsบางอย่างอ่อนลง
+
+อีกเหตุผลให้ secureทุก subdomain
+184) Subdomain XSS
+ถ้า Cookie Domainกว้าง:
+.example.com
+
+Compromised subdomainอาจมีผลต่อ Cookie/SameSite Securityมากขึ้น
+
+Scope cookiesแคบเมื่อทำได้
+185) Host-only Cookies
+ช่วยลด cross-subdomain exposure
+
+ใช้เมื่อ Architectureอนุญาต
+186) Prefix __Host-
+ช่วย enforce:
+Secure
+Path=/
+no Domain attribute
+
+เหมาะกับ sensitive session cookieในหลายระบบ
+187) Cookie Tossing Concept
+Subdomainอาจพยายาม set Cookieชื่อเดียวกับ Parent Domainในบาง configurations
+
+การใช้ Host-only/__Host-ช่วยลดปัญหาบางประเภท
+188) CSRF Token Cookie Domain
+ถ้าใช้ Double Submit Pattern
+
+ต้องคิด Cookie Scopeให้เหมาะ
+
+ไม่ให้ untrusted subdomain inject tokenง่าย
+189) XSS + CSRF Combination
+ถ้า Appมี XSS:
+
+Attackerอาจ:
+fetch CSRF token
+↓
+perform sensitive request
+
+ดังนั้นเมื่อมี XSSต้อง treatว่าหลาย Browser-side protectionsถูก bypass
+190) Security Priority
+XSSใน Authenticated/Admin Contextควร priorityสูงมาก
+
+อย่ามองว่า “แค่ frontend bug”
+191) Incident Responseกรณี XSS
+ต้อง:
+remove vulnerable path
+sanitize/patch
+review stored payloads
+check audit logs
+consider session impact
+
+ถ้า Stored XSSอาจต้อง clean malicious records
+192) Session Revocationหลัง XSS Incident
+ถ้า Tokenอาจถูก exfiltrate
+
+อาจต้อง:
+revoke sessions
+rotate affected credentials
+
+ตาม Threat Analysis
+193) CSPช่วย Forensics
+Violation reportsอาจช่วยระบุว่า Scriptแปลก ๆถูกพยายาม execute
+
+แต่ไม่ได้แทน Audit Logs
+194) CSRF Incident
+ถ้าพบ Sensitive Endpointไม่มี Protection
+
+ต้องตรวจ:
+audit history
+unexpected state changes
+
+ไม่ใช่แค่ patchแล้วจบ
+195) Browser Security Layersรวม
+TLS
+↓
+Same-Origin Policy
+↓
+CORS
+↓
+Cookies/SameSite
+↓
+CSRF protections
+↓
+Output encoding / sanitization
+↓
+CSP
+
+แต่ละ Layerแก้ Threatคนละแบบ
+196) Mental Model: CSRF
+Attackerไม่ได้ขโมย Session แต่หลอก Browserที่มี Sessionอยู่แล้วให้ใช้มันแทน
+
+197) Mental Model: XSS
+Attackerทำให้ Codeของตัวเองรันภายใต้ Originของเว็บเรา ทำให้ Browserมอง Scriptนั้นเกือบเหมือน Codeของเราเอง
+
+198) Mental Model: HttpOnly
+HttpOnlyช่วยไม่ให้ JavaScriptอ่าน Session Cookie แต่ไม่ได้หยุด JavaScriptจากการใช้ Sessionนั้นยิง Request
+
+199) Mental Model: CSP
+CSPเป็นข้อจำกัดเพิ่มเติมว่า Script/Resourceแบบไหน Browserยอมรัน ไม่ใช่ตัวแก้ XSSหลัก
+
+200) CSRF Checklist
+ถ้าใช้ Cookie Authenticationถาม:
+SameSiteอะไร?
+CSRF tokenมีไหม?
+Origin/Referer checkไหม?
+Sensitive actions require re-authไหม?
+
+201) XSS Checklist
+ถาม:
+Framework auto-escapeไหม?
+มี raw HTMLไหม?
+มี innerHTMLไหม?
+sanitizeด้วยอะไร?
+URLs validateไหม?
+
+202) ต่อ:
+third-party scriptsอะไรบ้าง?
+CSPมีไหม?
+uploads serveจาก originไหน?
+tokensอยู่ localStorageไหม?
+
+203) React Checklist
+ให้ Search Codeหา:
+dangerouslySetInnerHTML
+innerHTML
+eval
+document.write
+javascript:
+
+เป็น Security Review Points
+204) API + Browser Checklist
+ถ้า:
+Cookie auth
++
+cross-origin frontend
+
+ต้องคิดพร้อมกัน:
+CORS
+SameSite
+CSRF
+XSS
+
+ไม่แยกทำแบบคนละทีมโดยไม่ align
+205) Common Anti-pattern — CORS as CSRF protection
+ไม่พอ
+206) Common Anti-pattern — HttpOnly means XSS safe
+ไม่จริง
+207) Common Anti-pattern — React means no XSS
+ไม่จริงเมื่อใช้ raw HTML/dangerous APIs
+208) Common Anti-pattern — sanitize with regex
+ไม่พอ
+209) Common Anti-pattern — CSP with unsafe-inline แล้วคิดว่าป้องกัน XSSครบ
+ไม่ใช่
+210) Common Anti-pattern — store JWT localStorageโดยไม่คิด XSS Threat
+ต้องประเมิน
+211) Common Anti-pattern — trust data from DB
+DBอาจมี stored malicious input
+212) Common Anti-pattern — GET endpointทำ delete/update
+เพิ่ม CSRF/accidental action risk
+213) Common Anti-pattern — allow arbitrary HTML from CMS
+แม้ Editor “trusted” ก็เพิ่ม Blast Radius
+214) Common Anti-pattern — render logs/raw error dataใน admin dashboard
+Stored XSSอาจเกิดใน Operations UI
+215) Common Anti-pattern — third-party scriptทุกอย่างบน Login Page
+เพิ่ม Supply-chain Risk
+216) End-to-End CSRF Example
+Victim
+↓ login
+example.com sets session cookie
+↓
+Victim visits attacker.com
+↓
+attacker submits POST to example.com
+↓
+browser may attach cookie
+↓
+server checks:
+session valid?
+CSRF token?
+Origin?
+↓
+reject attacker request
+
+217) End-to-End XSS Example
+Attacker enters malicious content
+↓
+App stores it in DB
+↓
+Admin opens page
+↓
+Frontend renders with raw HTML
+↓
+browser executes attacker script
+↓
+script runs as admin-origin code
+
+นี่คือ Stored XSS Flowที่ต้องจำ
+218) Safer Render Flow
+Untrusted input
+↓
+validate
+↓
+store as data
+↓
+render with auto-escaping
+
+ถ้าจำเป็นต้อง HTML:
+raw content
+↓
+trusted sanitizer
+↓
+safe allowlisted HTML
+↓
+render
+
+219) Defense-in-Depth Browser Security
+ระบบที่ดีอาจมี:
+HttpOnly + Secure + SameSite cookie
+CSRF token
+Origin validation
+React auto-escaping
+HTML sanitizer
+CSP
+
+ถ้าชั้นหนึ่งผิด ยังมีชั้นอื่นช่วยจำกัด Impact
+220) สิ่งที่ควรจำที่สุด
+CSRF
+→ forged action
+
+XSS
+→ injected script
+
+CSRFอาศัย Browserส่ง Credentialแทน Victim
+
+XSSทำให้ Attacker Codeรันใน Trusted Origin
+สรุป 7.7
+CSRF เกิดเมื่อ Attackerหลอก Browserของ Userให้ส่ง Requestโดยใช้ Credentialที่ Browserแนบให้อัตโนมัติ จึงควรป้องกันด้วย:
+SameSite cookies
+CSRF tokens
+Origin/Referer validation
+re-authenticationสำหรับ critical actions
+
+ส่วน XSS เกิดเมื่อ Untrusted Dataถูก Browserตีความเป็น Code จึงควรใช้:
+framework auto-escaping
+context-aware output encoding
+avoid dangerous DOM sinks
+HTML sanitizationเมื่อจำเป็น
+CSP as defense-in-depth
+
+และต้องจำว่า:
+HttpOnly ช่วยป้องกันการอ่าน Cookieโดย JavaScript แต่ถ้ามี XSS Scriptยังสามารถใช้ Browserของ Victimยิง APIใน Sessionนั้นได้
+
+ดังนั้น Browser Securityที่ดีต้องออกแบบ CORS, Cookies, SameSite, CSRF, XSS และ CSP ให้ทำงานร่วมกัน ไม่ใช่เลือกอย่างใดอย่างหนึ่งแล้วคิดว่าปลอดภัยครบ
+
+
+7.8 Injection Attacks: SQL Injection, Command Injection, NoSQL Injection & Safe Input Handling แบบลงลึก
+บทนี้จะลงลึกเรื่อง Injection ซึ่งเกิดเมื่อระบบเอา Data ที่ User ควบคุม ไปประกอบเป็น Code/Command/Query แล้ว Engine ตีความ Data นั้นเป็นคำสั่งจริง
+
+Mental Model:
+Untrusted Input
+↓
+ถูกต่อเข้า Code / Query / Command
+↓
+Interpreter เข้าใจเป็นคำสั่ง
+↓
+Attacker เปลี่ยนพฤติกรรมระบบได้
+
+หลักสำคัญที่สุดคือ:
+Data ต้องถูกเก็บเป็น Data และไม่ควรถูกตีความเป็น Code
+
+1) Injection คืออะไร
+Injection คือช่องโหว่ที่ Attacker สามารถควบคุมบางส่วนของคำสั่งที่ระบบจะ Execute
+
+เช่น:
+SQL
+Shell command
+NoSQL query
+Template
+LDAP
+
+ตัวอย่าง:
+User Input
+↓
+"abc"
+
+ปกติควรเป็นแค่ข้อมูล
+
+แต่ถ้าเราต่อ Stringไม่ปลอดภัย:
+SELECT ...
++ user input
+
+Inputอาจกลายเป็นส่วนหนึ่งของ Query Logic
+2) SQL Injection คืออะไร
+SQL Injection หรือ SQLi เกิดเมื่อ User-controlled Input ถูกเอาไปประกอบ SQL โดยตรง
+
+ตัวอย่าง Code ที่ไม่ปลอดภัย:
+const sql =
+  "SELECT * FROM users WHERE email = '" +
+  email +
+  "'";
+
+ถ้า email เป็น Inputธรรมดา:
+user@example.com
+
+ก็ยังดูเหมือนปกติ
+
+แต่ถ้า Inputถูกออกแบบให้แก้โครงสร้าง Query ระบบอาจถูกหลอกให้ Queryผิดความตั้งใจได้
+3) Root Cause ของ SQL Injection
+Root Causeไม่ใช่เพราะ:
+Userใส่ quote
+
+แต่เพราะ:
+Application แยก “SQL Code” กับ “User Data” ไม่ชัดเจน
+
+4) หลักแก้ที่สำคัญที่สุด
+ใช้:
+Parameterized Query
+Prepared Statement
+
+ไม่ใช้ String Concatenation
+5) Parameterized Query คืออะไร
+แทนที่จะเขียน:
+const sql =
+  `SELECT * FROM users WHERE email = '${email}'`;
+
+ให้เขียน Concept:
+const sql =
+  `SELECT * FROM users WHERE email = ?`;
+
+แล้วส่ง:
+[email]
+
+แยกจาก Query
+6) ทำไม Parameterized Query ปลอดภัยกว่า
+Databaseรู้ล่วงหน้าว่า:
+SELECT * FROM users WHERE email = ?
+
+คือ Query Structure
+
+ส่วน:
+user input
+
+เป็น Data Parameter
+
+ดังนั้น Inputไม่ควรสามารถเปลี่ยน Query Structureได้
+7) Prepared Statement
+Prepared Statementคือแนวคิดที่ Database/Driverเตรียม Query Structureก่อน
+
+จากนั้น bind Valuesทีหลัง
+
+Mental Model:
+SQL structure
+↓ prepare
+Parameters
+↓ bind
+Execute
+
+8) Example Node.js
+Concept:
+const [rows] = await db.execute(
+  "SELECT * FROM users WHERE email = ?",
+  [email]
+);
+
+ดีกว่า:
+db.query(
+  `SELECT * FROM users WHERE email = '${email}'`
+);
+
+9) Example PostgreSQL
+ใช้ placeholders:
+await db.query(
+  "SELECT * FROM users WHERE email = $1",
+  [email]
+);
+
+10) Example PHP PDO
+Concept:
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE email = :email'
+);
+
+$stmt->execute([
+    ':email' => $email
+]);
+
+11) Example Laravel
+Laravel Query Builderเช่น:
+DB::table('users')
+    ->where('email', $email)
+    ->first();
+
+ปกติ Frameworkจะ bind parameterให้
+12) ORMช่วยลด SQL Injection
+ORM เช่น:
+Laravel Eloquent
+Prisma
+TypeORM
+Sequelize
+Hibernate
+
+มัก parameterize valuesให้อัตโนมัติ
+
+แต่:
+ORMไม่ได้ทำให้ SQL Injectionเป็นไปไม่ได้
+
+13) ORMจะยังเสี่ยงเมื่อใช้ Raw Query
+เช่น:
+raw()
+whereRaw()
+orderByRaw()
+DB::raw()
+
+ถ้าเอา User Inputไปต่อ Stringเอง
+
+Riskกลับมา
+14) Laravel Example ที่ต้องระวัง
+ไม่ดี:
+DB::select(
+    "SELECT * FROM users WHERE email = '$email'"
+);
+
+ดีกว่า:
+DB::select(
+    "SELECT * FROM users WHERE email = ?",
+    [$email]
+);
+
+15) whereRaw() ต้องระวัง
+ไม่ดี:
+->whereRaw("status = '$status'")
+
+ดีกว่า:
+->whereRaw(
+    'status = ?',
+    [$status]
+)
+
+16) Parameterizationใช้กับ Valuesได้ดี
+เช่น:
+email
+name
+status
+price
+date
+
+แต่ไม่ได้ใช้แทน SQL Identifiersทุกอย่างง่าย ๆ
+
+เช่น:
+column name
+table name
+ORDER BY direction
+
+17) Dynamic Column Name Problem
+สมมติ Clientส่ง:
+sortBy=name
+
+แล้ว Code:
+`ORDER BY ${sortBy}`
+
+Parameterized valueไม่สามารถแทน Identifierได้เสมอ
+
+จึงต้อง:
+allowlist
+
+18) Example Allowlist
+const allowedSorts = {
+  name: "name",
+  createdAt: "created_at",
+  price: "price"
+};
+
+const column = allowedSorts[sortBy];
+
+if (!column) {
+  throw new Error("Invalid sort");
+}
+
+จากนั้นค่อยใช้ column
+19) Sort Direction
+Userส่ง:
+asc
+desc
+
+อย่าต่ออะไรก็ได้
+
+ใช้:
+const direction =
+  sortDirection === "desc"
+    ? "DESC"
+    : "ASC";
+
+หรือ allowlist
+20) หลักสำคัญ
+Values
+→ parameterize
+
+Identifiers / SQL keywords
+→ allowlist
+
+จำสองแบบนี้ให้แม่น
+21) Dynamic IN Query
+เช่น:
+WHERE id IN (...)
+
+อย่าต่อ stringเอง
+
+ใช้ Libraryช่วย generate placeholders
+
+เช่น:
+IN (?, ?, ?)
+
+ตามจำนวน values
+22) Search Query
+บางคนทำ:
+LIKE '%${search}%'
+
+เสี่ยงถ้า concatenate
+
+ให้:
+LIKE ?
+
+แล้ว bind:
+%search%
+
+23) LIKE Wildcards
+แม้ Parameterizedแล้ว Userอาจส่ง:
+%
+_
+
+ซึ่งมี semanticsของ LIKE
+
+นี่ไม่ใช่ SQL Injection
+
+แต่เป็น:
+business/search behavior issue
+
+ถ้าไม่ต้องการ wildcardต้อง escapeตาม LIKE rules
+24) SQL Injection vs Input Validation
+Parameterized Queryป้องกัน SQL structure manipulation
+
+แต่ Input Validationยังจำเป็น
+
+เช่น:
+age = "hello"
+
+ไม่ใช่ SQLi แต่เป็น Invalid Data
+
+ดังนั้นใช้ทั้ง:
+validation
++
+parameterization
+
+25) Validationไม่ควรใช้แทน Parameterization
+ไม่ควรคิดว่า:
+เรา reject quote '
+ดังนั้นปลอดภัย
+
+เพราะมี Encoding/Database Syntaxหลายแบบ
+
+Root Fixคือ Parameterization
+26) Blacklist Charactersเป็นวิธีที่อ่อน
+เช่น block:
+'
+"
+;
+--
+
+ไม่ได้แก้ Root Cause
+
+และอาจ blockข้อมูลจริงของ User
+27) Allowlist Inputยังมีประโยชน์
+เช่น Status:
+pending
+paid
+canceled
+
+ใช้ Enum
+
+ช่วยทั้ง Security + Correctness
+28) SQL Injection Impact
+ถ้า DB Userมีสิทธิ์มาก อาจเกิด:
+อ่านข้อมูล
+แก้ข้อมูล
+ลบข้อมูล
+bypass auth
+
+ตาม DB/Query/Privileges
+29) Defense in Depthด้วย DB Permissions
+Runtime App Userควรมีแค่สิทธิ์ที่จำเป็น
+
+ไม่ควรใช้:
+root
+superuser
+
+สำหรับ Appทั่วไป
+30) Example
+Runtime Userอาจมี:
+SELECT
+INSERT
+UPDATE
+DELETE
+
+เฉพาะ App Schema
+
+ไม่จำเป็น:
+CREATE USER
+DROP DATABASE
+SUPER
+
+31) Migration User แยกจาก Runtime User
+Migrationอาจต้อง:
+ALTER TABLE
+CREATE INDEX
+
+แต่ Runtimeไม่จำเป็น
+
+นี่คือ Least Privilege
+32) SQL Error Leakage
+ถ้า Query fail
+
+ไม่ควรตอบ User:
+SQLSTATE...
+table users...
+column password_hash...
+
+เพราะ leak Schema/Technology
+
+Logภายในได้ แต่ Public Responseควร generic
+33) Blind SQL Injection Concept
+บางกรณี Attackerไม่เห็น Query Resultตรง ๆ
+
+แต่อาจ inferจาก:
+response difference
+timing
+error
+
+ดังนั้นไม่ใช่แค่ “เราไม่โชว์ DB Dataก็ปลอดภัย”
+34) Time-based Behavior
+ถ้า Query Behaviorเปลี่ยนตาม injected condition
+
+Attackerอาจ inferข้อมูลจากเวลา
+
+อีกเหตุผลที่ต้องแก้ Parameterizationไม่ใช่แค่ซ่อน Error
+35) Stored SQL Injection Concept
+Inputอาจถูกบันทึกไว้ก่อน
+
+วันหลัง Developerเอาค่านั้นไปสร้าง Dynamic SQLโดยไม่ parameterize
+
+จึงเกิด Injectionภายหลังได้
+36) Dataใน DBไม่ได้ Trustedอัตโนมัติ
+เหมือน XSSบทก่อน
+
+ถ้ามาจาก User:
+ยังคงเป็น untrusted data
+
+37) Second-order Injection
+เรียกกรณีที่ Payloadถูกเก็บไว้ก่อนแล้ว Triggerทีหลังว่า:
+Second-order injection
+
+ต้องระวัง Data Flowทั้งระบบ
+38) Command Injection คืออะไร
+เกิดเมื่อ User Inputถูกต่อเข้า:
+Shell Command
+
+เช่น:
+exec(`convert ${filename} output.jpg`);
+
+ถ้า filename ถูก Userควบคุม
+
+อาจเปลี่ยน Shell Command Structureได้
+39) Root Cause
+เหมือน SQLi:
+Dataถูกตีความเป็น Command Syntax
+
+40) Shellคือ Interpreter
+เมื่อเราใช้:
+sh
+bash
+cmd.exe
+PowerShell
+
+มันตีความ Special Charactersและ Syntax
+
+ทำให้ Inputอันตราย
+41) Best Fix
+ถ้าไม่จำเป็น อย่าใช้ Shell
+
+ใช้ Library/APIโดยตรง
+
+เช่นแทน:
+shell command copy file
+
+ใช้:
+filesystem API
+
+42) Example
+แทน:
+exec(`cp ${source} ${dest}`);
+
+ใช้ Node:
+fs.copyFile(source, dest);
+
+ไม่มี Shell Parsing
+43) ถ้าต้องรัน Programจริง
+ใช้ APIที่ส่ง Argumentsเป็น Arrayแยกจาก Command
+
+Concept:
+spawn("convert", [
+  inputFile,
+  outputFile
+]);
+
+ดีกว่า:
+exec(
+  `convert ${inputFile} ${outputFile}`
+);
+
+44) exec vs spawn Concept
+execมักผ่าน Shellและรับ Command String
+
+spawnสามารถเรียก Executableตรงพร้อม argument list
+
+การไม่ใช้ Shellลด Injection Surfaceได้มาก
+45) PHP Command Execution
+Functionเช่น:
+exec
+shell_exec
+system
+passthru
+
+ต้องระวังมากถ้ามี User Input
+46) escapeshellarg() ช่วยได้ไหม
+ช่วยบางกรณี
+
+แต่:
+ยังไม่ดีเท่าการหลีกเลี่ยง shell
+
+และต้องเข้าใจ Platform/Command Semanticsจริง
+47) Shell Injectionไม่ใช่แค่ Filename
+Inputอาจมาจาก:
+URL
+IP
+domain
+format
+command option
+
+เช่น:
+ping ${host}
+
+48) Domain Validation
+ถ้าต้องรับ Hostnameจริง
+
+ใช้:
+strict validation
++
+non-shell execution
+
+ไม่ใช่ concatenate
+49) Option Injection
+แม้ไม่มี Shell Meta Characters
+
+ถ้า User Inputเริ่มด้วย:
+-
+
+Programอาจตีความเป็น Command-line Option
+
+เช่น Filename:
+--something
+
+ต้องคิด Program Argument Semanticsด้วย
+50) -- Separator
+Unix programsหลายตัวรองรับ:
+--
+
+เพื่อบอกว่า Argumentหลังจากนี้ไม่ใช่ Option
+
+แต่ Behaviorขึ้นกับ Program
+
+ไม่ใช่ Universal Fix
+51) Command Injection Impact
+ถ้ารันในสิทธิ์ App User:
+read files
+modify files
+network access
+steal secrets
+
+ตาม Permissionของ Process
+52) ถ้า Appรันเป็น root
+Command Injectionอาจกลายเป็น:
+full server compromise
+
+นี่คือเหตุผลจาก Topic 6:
+Appไม่ควรรัน root
+
+53) Least Privilegeลด Blast Radius
+ถ้า App Userอ่านได้เฉพาะ App Files
+
+Command Injectionยังร้ายแรง
+
+แต่ Damageน้อยกว่ารัน root
+54) Containerไม่ได้ทำให้ Command Injectionปลอดภัยเอง
+Attackerอาจ:
+อ่าน env secrets
+เข้าถึง DB
+ใช้ service credentials
+
+จาก Containerได้
+
+Containerเป็น Isolation Layerไม่ใช่ Fix
+55) NoSQL Injection คืออะไร
+แม้ไม่ได้ใช้ SQLก็ยังมี Injectionได้
+
+เช่น MongoDB Queryเป็น Object
+
+ถ้า Userควบคุม Query Operatorsได้
+
+อาจเปลี่ยน Logic
+56) Example Concept
+Backendคาด:
+username = string
+
+แต่ Clientส่ง Object:
+{
+  "username": {
+    "$ne": null
+  }
+}
+
+ถ้า Codeส่ง Payloadเข้า Queryตรง ๆ
+
+Query Semanticsอาจเปลี่ยน
+57) Root Causeเหมือนเดิม
+Backendไม่ enforce Type/Structureของ Input
+
+Userควบคุม Query Language Structureได้
+58) Fix NoSQL Injection
+ใช้:
+strict schema validation
+expected scalar types
+query builder
+operator allowlist
+
+59) Example
+ถ้าต้องการ:
+email: string
+
+ต้อง reject:
+{
+  "email": {
+    "$ne": ""
+  }
+}
+
+เพราะไม่ใช่ String
+60) Schema Validationช่วยมาก
+เช่น:
+Zod
+Joi
+Yup
+class-validator
+Laravel Validation
+
+กำหนด:
+email = string/email
+status = enum
+page = integer
+
+ก่อนเข้าสู่ Query Layer
+61) แต่ Validationไม่แทน Safe Query API
+ใช้ทั้งสองชั้น
+62) Mongo $where
+Featureที่ Execute JavaScript-like logic historicallyมี Riskสูง
+
+หลีกเลี่ยง User-controlled expressions
+63) Dynamic Query Objects
+ไม่ควรทำ:
+collection.find(req.body);
+
+ถ้า req.body มาจาก Clientทั้งหมด
+
+เพราะ Userควบคุม Query Structure
+64) Better
+สร้าง Queryเอง:
+const query = {
+  email: req.body.email
+};
+
+หลัง validation
+65) Mass Assignmentกับ Query Injectionคล้ายกัน
+หลักคือ:
+อย่าเอา Objectจาก Clientทั้งก้อนส่งเข้า Data Layerโดยไม่เลือก Fields
+
+66) Filter API
+สมมติ Endpointรองรับ Filtering:
+?status=paid
+
+Backendควร mapเฉพาะ Filtersที่รองรับ
+67) ไม่ควรรับ Generic Query DSLโดยไม่จำเป็น
+เช่น:
+{
+  "where": {
+    "...": "anything"
+  }
+}
+
+ถ้า Public APIไม่จำเป็นต้องเปิด Query Powerขนาดนั้น
+
+Attack Surfaceเพิ่ม
+68) Search / Reporting APIs
+มักมี Dynamic:
+filters
+sort
+group by
+columns
+
+จึงเป็น Injection Hotspot
+
+ต้อง allowlistทุกส่วน
+69) Dynamic SQL Reporting
+เช่น Userเลือก:
+column
+sort
+date range
+
+ใช้:
+allowlisted identifier mapping
+parameterized values
+
+ร่วมกัน
+70) ORM Raw Expression Hotspots
+เวลา Security Reviewให้ค้น:
+raw
+unsafe
+queryRaw
+executeRaw
+DB::raw
+whereRaw
+
+แล้วตรวจทุกจุด
+71) Prisma Example Concept
+Safe:
+query builder / tagged parameter API
+
+ต้องระวัง Unsafe Raw APIsที่รับ String assembledเอง
+
+ชื่อ APIของ Libraryมักสื่อว่า unsafe
+72) SQL Injectionใน ORDER BY
+Parameter placeholderหลาย DBใช้กับ Valueไม่ได้กับ Column Name
+
+จึงต้อง allowlist
+
+ย้ำเพราะเป็น Bugที่พบบ่อย
+73) Table Names Dynamic
+เช่น multi-tenantแบบ:
+table_${tenant}
+
+ต้องไม่ใช้ Tenant IDจาก Clientตรง ๆ
+
+ควร derive/mappingจาก Trusted Context
+74) Better Multi-tenant Design
+ในหลายระบบใช้:
+tenant_id column
+
+กับ Authorization Filter
+
+ง่ายและปลอดภัยกว่าการสร้าง table namesแบบ arbitrary
+
+ขึ้นกับ Architecture
+75) SQL Identifier Quoting
+Driverบางตัวมี API quote identifiers
+
+แต่ยังควร allowlistเมื่อ Userมีอิทธิพลต่อ Identifier
+
+เพราะแม้ Quoteถูกก็อาจเลือก Columnที่ไม่ควรเปิดเผย
+76) Security vs Business Authorization
+Userอาจส่ง:
+sort=password_hash
+
+ถึงไม่เกิด SQLi
+
+แต่ก็ไม่ควรเปิด Fieldนั้น
+
+ดังนั้น Allowlistยังป้องกัน Data Exposureด้วย
+77) Path Injection / Path Traversal
+เป็น Injection-like classที่สำคัญ
+
+เช่น:
+GET /download?file=...
+
+แล้ว Backendทำ:
+/base/uploads/ + userInput
+
+Userอาจพยายามออกนอก Directory
+78) Path Traversal
+Concept:
+../
+
+สามารถเปลี่ยน Target Path
+
+Root Causeคือ Userควบคุม File Pathมากเกิน
+79) Fix Path Traversal
+ดีกว่าให้ Clientส่ง Path:
+file_id
+
+แล้ว Server lookup trusted storage pathเอง
+80) Example
+ไม่ดี:
+/download?path=/etc/...
+
+ดีกว่า:
+/download?id=upload_123
+
+Server map:
+upload_123
+→ controlled object key
+
+81) Path Normalizationอย่างเดียวไม่พอเสมอ
+ต้องตรวจว่า Final Resolved Pathยังอยู่ใน Allowed Base Directoryจริง
+82) Filenameจาก User
+ควร treatเป็น:
+display metadata
+
+ไม่จำเป็นต้องใช้เป็น physical storage filename
+83) Generate Storage Name
+เช่น:
+UUID / random key
+
+แล้วเก็บ Original Filenameไว้แสดง
+
+ลด Path/Collision Issues
+84) Template Injection
+ถ้า User Inputถูกเอาไปเป็น Template Expression
+
+แทนที่จะเป็น Template Data
+
+อาจ execute logic/codeของ Template Engineได้
+85) Safe Template Model
+Template
+= trusted code
+
+Data
+= untrusted input
+
+อย่าให้ Userสร้าง Template Codeถ้าไม่จำเป็น
+86) Server-Side Template Injection
+SSTI = Server-Side Template Injection
+
+อาจร้ายแรงถึง:
+server-side code execution
+
+ขึ้นกับ Template Engine
+87) Example Root Cause
+ไม่ดี:
+renderTemplate(userInput)
+
+ดีกว่า:
+renderTemplate(
+  trustedTemplate,
+  {
+    name: userInput
+  }
+)
+
+88) LDAP Injection
+ถ้าสร้าง LDAP Filterด้วย String Concatenationก็มี Injectionได้เช่นกัน
+
+Fixคือใช้:
+escaping/parameterized APIs
+strict input handling
+
+ตาม protocol
+89) XML / XPath Injection
+ก็เป็นแนวคิดเดียวกัน
+
+ถ้า User Inputกลายเป็นส่วนหนึ่งของ Expression Language
+
+Riskเกิด
+90) Injection Patternรวม
+SQL
+Shell
+NoSQL
+Template
+Path
+LDAP
+XPath
+
+ทั้งหมดมี Root Mental Modelเดียว:
+อย่าเอา Untrusted Dataไปสร้าง Interpreter Syntax
+
+91) Escaping vs Parameterization
+ถ้ามี Parameterized API:
+ใช้มันก่อน
+
+อย่าพยายาม Escapeด้วยมือ
+92) ทำไม Manual Escapingอันตราย
+เพราะต้องรู้:
+encoding
+database mode
+character set
+context
+syntax
+
+ผิดเล็กน้อยก็ bypassได้
+93) Prepared Statementsคือ Structural Separation
+นี่แข็งแรงกว่า character filtering
+94) Stored Proceduresปลอดภัยเสมอไหม
+ไม่
+
+ถ้า Stored Procedureภายในสร้าง Dynamic SQLด้วย String Concatenation
+
+ก็ยัง Injectionได้
+95) Stored Procedureที่ parameterizedถูกต้องช่วยได้
+แต่ชื่อว่า Stored Procedureไม่ได้เป็น Security Guarantee
+96) Input Validation Layer
+ตัวอย่าง Request:
+{
+  "email": "a@example.com",
+  "status": "paid",
+  "page": 2
+}
+
+ควร validate:
+email → email string
+status → enum
+page → positive integer
+
+ก่อน Business/Data Layer
+97) Validationที่ Boundary
+ควรทำเมื่อ Dataเข้าระบบ:
+API
+webhook
+file import
+message queue
+
+ไม่ใช่เฉพาะ Browser Form
+98) Queue Dataก็ Untrustedได้
+แม้ Messageมาจาก Internal Service
+
+อาจมี:
+old schema
+compromised producer
+bug
+
+Consumerควร validate Contract
+99) Webhook Payload
+ต้อง:
+verify signature
+validate schema
+validate values
+
+ทั้ง 3 ชั้น
+
+Signatureถูกไม่ได้แปลว่า Payload符合 Business Rules
+100) Type Coercion
+JavaScriptอาจมีปัญหา:
+"1"
+1
+true
+null
+[]
+{}
+
+ถ้าไม่ Validate Typeชัด
+
+อาจเกิด Logic/Query Bugs
+101) Don't rely on Truthinessสำหรับ Security Input
+เช่น:
+if (req.body.isAdmin) { ... }
+
+ถ้า Input "false" เป็น String
+
+ใน JavaScriptถือ truthy
+
+ต้อง schema validate Booleanจริง
+102) Numeric Input
+เช่น:
+limit
+offset
+amount
+
+ควร:
+parse/validate
+range check
+
+ไม่เอา raw stringต่อ Query
+103) Range Validation
+แม้ SQL-safe:
+limit=1000000000
+
+อาจทำ DoSด้วย Queryหนัก
+
+Securityรวม Abuse/Resource Limitsด้วย
+104) Pagination Limits
+กำหนด:
+max page size
+
+เช่นไม่ให้ Userขอ 10 ล้าน rows
+105) Query Complexity
+GraphQL/Search Systemsต้องจำกัด:
+depth
+complexity
+result size
+
+ไม่ใช่ Injectionอย่างเดียว แต่ช่วย Resource Abuse
+106) Dynamic Regular Expressions
+User Inputเข้า Regexอาจเกิด:
+Regex Injection
+ReDoS
+
+ReDoS = Regular Expression Denial of Service
+107) ReDoS
+Regexบาง Patternใช้ CPUสูงมากกับ crafted input
+
+ถ้า Userควบคุม Regex Patternเองยิ่งเสี่ยง
+108) Fix
+ถ้า Userแค่ Search Text:
+
+อย่าเอาไปเป็น Regex Patternตรง ๆ
+
+Escape Regex Metacharactersหรือใช้ normal search API
+109) Command/SQL Timeout
+ถึง Queryปลอดภัยก็ควรมี:
+query timeout
+command timeout
+
+เพื่อลด Resource Exhaustion
+
+Defense in Depth
+110) Database Statement Timeout
+Critical Productionสามารถตั้ง Limitสำหรับ Queriesบางประเภท
+
+ช่วยลด runaway query impact
+111) SQL Injectionกับ Transactions
+Parameterized Queryป้องกัน Injection
+
+Transactionป้องกัน:
+partial updates / concurrency
+
+คนละปัญหา
+
+อย่าสับสน
+112) Escaping HTMLไม่ป้องกัน SQL Injection
+เช่น:
+htmlspecialchars()
+
+ไม่มีประโยชน์กับ SQL Context
+
+Context-specific Controlsสำคัญ
+113) SQL Escapingไม่ป้องกัน XSS
+เช่นกัน
+
+Security Encodingต้องตรง Context
+114) Central Validation Schemas
+ช่วยให้:
+frontend contract
+backend validation
+API docs
+
+consistentได้
+
+แต่ Backend Validationยังเป็น Authority
+115) Laravel Validation
+เช่น Concept:
+$request->validate([
+    'email' => ['required', 'email'],
+    'status' => ['required', Rule::in([...])],
+]);
+
+ช่วย reject structureผิดก่อน Data Layer
+116) Next.js API Validation
+ใช้ Schema Libraryเช่น:
+Zod
+
+เพื่อ parse:
+body
+query
+params
+
+ก่อนใช้
+117) Parse vs Validate
+Validation Libraryบางตัว:
+coerce
+transform
+default
+
+ต้องรู้ว่า Libraryทำอะไร
+
+Security-critical Inputไม่ควรถูก transformแบบไม่ตั้งใจ
+118) Unknown Fields
+ควรตัดสินว่า:
+reject
+strip
+allow
+
+Unknown Fields
+
+สำหรับ Sensitive APIs การ rejectหรือ stripอย่าง explicitช่วยป้องกัน Mass Assignment
+119) Example Profile Update
+Schemaอนุญาต:
+name
+phone
+
+ถ้า Requestมี:
+role
+isAdmin
+
+ควร ignore/reject ไม่ส่งต่อ Model
+120) DTO
+DTO = Data Transfer Object
+
+ช่วยกำหนด Shapeของข้อมูลที่ Layerรับ
+
+เช่น:
+UpdateProfileDTO
+
+มีแค่ Fieldsที่ Userแก้ได้
+121) Don't pass req.body directly
+ไม่ดี:
+await User.update(req.body)
+
+เพราะ Userอาจส่ง Fieldsที่ Developerลืม
+122) Better
+const update = {
+  name: validated.name,
+  phone: validated.phone
+};
+
+123) Logging Injection
+ถ้า Logsเป็น Text Protocolหรือถูก renderภายหลัง
+
+Userอาจ inject:
+newlines
+fake log entries
+control characters
+
+เรียกว่า Log Injection/Forging
+124) Structured Loggingช่วย
+ใช้ JSON Structured Logs
+
+Library handle escaping
+
+เช่น:
+{
+  "message": "login failed",
+  "username": "..."
+}
+
+ดีกว่าต่อ Stringเอง
+125) Terminal Escape Sequences
+Untrusted dataใน Logsอาจมี ANSI/control sequences
+
+เวลาคนเปิด Terminalอาจเกิด misleading output
+
+Log Viewerควร sanitize/renderปลอดภัย
+126) CSV Injection
+ถ้า export User Dataเป็น CSV
+
+Cellที่ขึ้นต้นด้วยบาง charactersอาจถูก Spreadsheetตีความเป็น Formula
+
+นี่เรียกว่า CSV/Formula Injection
+127) Example Risk
+Admin download Users CSV
+
+เปิดใน spreadsheet
+
+formula-like contentจาก Userอาจถูก execute/evaluateตาม Spreadsheet Behavior
+
+ต้อง sanitize/exportอย่างปลอดภัยตาม Use Case
+128) Injectionไม่ได้อยู่แค่ Backend Code
+รวม Data Export/Office Toolsด้วย
+
+นี่คือเหตุผลที่ Data Contextสำคัญ
+129) HTTP Header Injection
+ถ้า User Inputถูกต่อเข้า Response Header
+
+เช่น:
+Location
+Content-Disposition
+
+โดยไม่ validate อาจเกิด Header Injectionในบาง environments
+130) CRLF Injection
+ใช้:
+\r\n
+
+เพื่อแทรก Headerใหม่ใน systemsที่ handleไม่ปลอดภัย
+
+Modern frameworksช่วยมาก แต่ไม่ควรสร้าง raw HTTP headersเองจาก untrusted input
+131) Redirect Target Validation
+เช่น:
+Location: userInput
+
+ควร validate Allowlist/Internal URL
+
+ไม่งั้นอาจกลายเป็น Open Redirect
+132) File Download Filename
+Header:
+Content-Disposition: attachment; filename="..."
+
+Original Filenameต้องผ่าน safe library/encoding
+
+ไม่ concatenate raw value
+133) SSRF เป็น Injectionไหม
+SSRF = Server-Side Request Forgery
+
+ไม่ใช่ Injectionตรง ๆ แต่มี Mental Modelคล้าย:
+User controls server destination
+
+จะลงลึก System Securityภายหลัง
+134) URL Fetch Endpoint
+ไม่ควร:
+POST /fetch
+{ "url": "anything" }
+
+แล้ว Server fetch arbitrary URL
+
+Attackerอาจเข้าถึง Internal Services
+
+ต้อง allowlist/control destinations
+135) Shell + SSRF Chain
+Security Bugsสามารถ chainกันได้
+
+เช่น Inputไป Commandที่ไป networkต่อ
+
+จึงต้อง Defense in Depthทุก Layer
+136) Query Builderไม่ได้แปลว่าทุกอย่าง Safe
+เช่น Libraryมี:
+raw SQL fragment
+
+Developerสามารถ bypass safetyเอง
+
+ต้อง Review escape hatches
+137) Safe-by-default APIs
+Prefer APIที่:
+parameters separated
+types explicit
+
+และทำ Unsafe operationsยาก
+138) Unsafe APIควรชื่อชัด
+เช่น:
+unsafeRaw
+dangerously...
+
+ช่วย Code Reviewเห็นง่าย
+139) Central Database Utility
+ทีมสามารถสร้าง wrapperที่:
+discourages raw SQL
+logs query duration
+enforces timeout
+
+ช่วยลด Risk
+140) Static Analysis
+Security Toolsสามารถค้น Patternเช่น:
+SQL string concatenation
+exec with user input
+eval
+raw query
+
+แต่ยังต้อง Human Review
+141) Dependency Vulnerabilities
+แม้ Codeเรา parameterized
+
+DB Driver/ORMเองอาจมี Bug
+
+ต้อง update Dependenciesและติดตาม CVEsตาม Topic 6/7.1
+142) Security Testing
+สำหรับ Injectionควรมี:
+unit tests
+integration tests
+negative tests
+SAST
+DAST
+
+ตาม Criticality
+143) Negative SQL Test
+Testว่า Inputแปลก ๆ:
+quotes
+special characters
+Unicode
+
+ยังถูก treatเป็น Dataและไม่เปลี่ยน Query Logic
+144) อย่า Testด้วยการดูว่า “errorไม่ขึ้น”
+Queryอาจ Injectionสำเร็จโดยไม่ error
+
+ต้อง assert Business Resultด้วย
+145) Test Authorization + Injectionร่วมกัน
+แม้ Query safe
+
+ต้องยัง ensure:
+User A cannot query User B data
+
+Parameterized Queryไม่ได้แก้ Broken Access Control
+146) Prepared Statementไม่ได้แก้ Business Logic
+เช่น:
+GET /users?id=999
+
+Query parameterizedสมบูรณ์
+
+แต่ถ้าไม่มี Ownership Check:
+ยัง IDOR
+
+147) Security Layers
+Authentication
+↓
+Authorization
+↓
+Validation
+↓
+Parameterized Query
+↓
+Least-privilege DB user
+
+แต่ละชั้นแก้คนละปัญหา
+148) SQL Injectionกับ Authentication
+Classic Bugอาจ bypass Loginถ้า Query loginถูกต่อ string
+
+แต่ modern authควร:
+lookup user by parameterized query
+↓
+verify password hash in application
+
+ไม่สร้าง Queryที่เช็ค Password Plaintext
+149) Password Query
+ไม่ดีทั้ง Securityหลายด้าน:
+SELECT *
+FROM users
+WHERE email = ?
+AND password = ?
+
+Passwordไม่ควรเก็บ plaintextอยู่แล้ว
+150) Better Login
+1 query user by email safely
+2 get password hash
+3 verify with Argon2/bcrypt
+
+151) Dynamic Search Feature
+สมมติ Frontendส่ง:
+{
+  "field": "name",
+  "operator": "contains",
+  "value": "Mazda"
+}
+
+Backendควร map:
+field → allowlisted DB column
+operator → allowlisted logic
+value → parameterized
+
+152) อย่าเอา operatorไปต่อ SQLตรง ๆ
+เช่น:
+operator = req.body.operator
+
+แล้ว:
+WHERE field ${operator} ?
+
+ต้อง allowlist:
+equals
+contains
+gt
+lt
+
+แล้ว mapเป็น trusted SQL
+153) Query DSL Design
+ถ้าต้องให้ Userสร้าง Filterซับซ้อน
+
+สร้าง:
+restricted domain-specific filter language
+
+ไม่เปิด SQLตรง
+154) Admin Reportsก็ยังต้อง Safe
+แม้ Adminเป็น Trusted Userมากกว่า
+
+Account Adminอาจถูก compromise
+
+และ Mistakesยังเกิดได้
+
+อย่าอนุญาต Raw SQLจาก Browserถ้าไม่จำเป็น
+155) SQL Consoleเป็น Privileged Tool
+ถ้าจำเป็นต้องมี:
+strong access
+MFA
+audit
+network restriction
+
+และ preferably read-onlyสำหรับทั่วไป
+156) Audit Raw Query Execution
+ถ้ามี Ops Toolรัน SQL
+
+ควรรู้:
+who
+when
+what environment
+reason
+
+157) Command Runner Admin Tools
+คล้ายกัน
+
+Endpointแบบ:
+POST /admin/run-command
+
+อันตรายมาก
+
+ควรแทนด้วย:
+predefined operations
+
+158) Example
+แทน Userพิมพ์:
+shell command
+
+ให้ UIมี:
+Restart worker
+Clear cache
+Run sync
+
+Backend mapไป trusted implementation
+159) Capability-based Operations
+ให้ Userเลือก:
+operation ID
+
+ไม่ให้ Userส่ง Code/Commandเอง
+
+ลด Injection Surface
+160) Cron Scriptกับ Injection
+ถ้า Cronเอาข้อมูล DB/Userไปประกอบ Shell Command
+
+ก็ยังเกิด Injectionได้
+
+แม้ไม่มี HTTP Requestตรง
+
+ต้องตาม Data Flow
+161) Filenameจาก API → DB → Cron
+เป็นตัวอย่าง Second-order Command Injectionได้
+
+ดังนั้นอย่า trustเพราะมาจาก DB
+162) Input Trust Classification
+Data Source:
+Public user
+Authenticated user
+Admin
+Partner API
+Internal DB
+Message queue
+
+ไม่มีอันไหนหมายความว่า Safe Code Syntaxโดยอัตโนมัติ
+163) Boundary Validation
+ทุก System Boundaryควร validate:
+type
+shape
+range
+business constraints
+
+แต่ Data Layerยังใช้ safe APIs
+164) Canonicalization
+บาง Inputมีหลาย Representation
+
+เช่น:
+URL encoding
+Unicode
+path normalization
+
+ต้อง normalizeอย่างเหมาะสมก่อน security comparisonบางกรณี
+165) Double Encoding
+Attackerอาจใช้ encoded formเพื่อ bypass naive filters
+
+อีกเหตุผลไม่ใช้ blacklist string matchingเป็นหลัก
+166) Unicode Confusables
+ตัวอักษรบาง Unicodeดูคล้ายกัน
+
+อาจใช้ spoof:
+domains
+usernames
+filenames
+
+ไม่ใช่ SQLiโดยตรงแต่เป็น Input Security Concern
+167) Normalizationต้องระวัง
+อย่า normalizeจนทำให้ identifiersสองตัวชนกันโดยไม่ตั้งใจ
+
+Security + Business semanticsต้อง align
+168) File Extension Validation
+แค่ดู:
+filename.endsWith(".jpg")
+
+ไม่พอสำหรับ File Upload Security
+
+ต้องดู:
+actual content/MIME
+storage isolation
+safe serving
+
+จะลงลึก File/Server Securityต่อไป
+169) Injection Defense Principle 1
+อย่าสร้าง Codeด้วยการต่อ Untrusted Strings
+
+170) Principle 2
+ใช้ Parameterized/Structured APIs
+
+171) Principle 3
+ถ้าส่วนใด parameterizeไม่ได้ ให้ใช้ Allowlist Mapping
+
+172) Principle 4
+Validate Type, Shape, Range และ Business Meaning
+
+173) Principle 5
+Runtime Identityต้องมี Least Privilege
+
+174) Principle 6
+Log Errorsภายใน แต่ไม่ leak interpreter/database internalsให้ Client
+
+175) Principle 7
+Treat Stored Data as untrusted if its origin was untrusted
+
+176) Example End-to-End Safe Search API
+Request
+↓
+Schema validation
+↓
+Map allowed sort field
+↓
+Map allowed sort direction
+↓
+Parameterized search value
+↓
+ORM/DB driver
+↓
+least-privilege DB user
+
+นี่คือ Safe Layering
+177) Example End-to-End Unsafe
+req.query
+↓
+string concat
+↓
+raw SQL
+↓
+DB root user
+
+ทุก Layerเพิ่ม Damage
+178) Command Execution Safe Flow
+User selects operation
+↓
+Validate operation enum
+↓
+Map to trusted function
+↓
+Call library/API
+
+ไม่ใช่:
+User input
+↓
+shell string
+↓
+exec
+
+179) NoSQL Safe Flow
+Request
+↓
+Schema validation
+↓
+Extract scalar fields
+↓
+Build trusted query object
+↓
+Database
+
+ไม่ใช่:
+req.body
+↓
+collection.find(req.body)
+
+180) Injection Review Checklist
+เวลาเห็น Queryถาม:
+มี string concatenationไหม?
+มี raw queryไหม?
+Userควบคุม identifierไหม?
+values parameterizedไหม?
+
+181) Command Checklist
+ใช้ shellจริงไหม?
+เลี่ยงได้ไหม?
+argumentsแยกไหม?
+user controls optionsไหม?
+process privilegeอะไร?
+
+182) NoSQL Checklist
+input type strictไหม?
+operators allowlistไหม?
+req.bodyถูกส่งตรงเข้า queryไหม?
+
+183) File/Path Checklist
+user controls physical pathไหม?
+resolve pathแล้วอยู่ใน base dirไหม?
+ใช้ random object keyแทนได้ไหม?
+
+184) Template Checklist
+template trustedไหม?
+userเป็น dataหรือ code?
+มี raw renderingไหม?
+
+185) Export Checklist
+CSV formula injection?
+HTML escaping?
+filename/header safe?
+
+186) Common Anti-pattern — Escape Quotesเอง
+ไม่พอ
+
+ใช้ parameterized API
+187) Common Anti-pattern — ORM means SQLi impossible
+ไม่จริงเมื่อใช้ raw APIs/dynamic identifiers
+188) Common Anti-pattern — Validation Regex blocks SQLi
+Validationช่วย แต่ไม่แทน Parameterization
+189) Common Anti-pattern — DB data is trusted
+Second-order injectionยังเกิดได้
+190) Common Anti-pattern — App runs DB as root
+เพิ่ม Blast Radiusมาก
+191) Common Anti-pattern — exec() with filename
+ใช้ filesystem/process argument APIแทน
+192) Common Anti-pattern — send whole req.body to Mongo Query
+Userอาจ inject operators
+193) Common Anti-pattern — Generic raw filtering API
+เปิด Query Powerเกิน Business Requirement
+194) Common Anti-pattern — User-controlled sort column concatenation
+ใช้ mapping allowlist
+195) Common Anti-pattern — Path from request used directly
+ใช้ resource ID / trusted storage mapping
+196) Common Anti-pattern — Raw template from user
+Userควรเป็น Template Data ไม่ใช่ Template Code
+197) Common Anti-pattern — SQL Errorส่งกลับ Browser
+Information Leakage
+198) Common Anti-pattern — WAFเป็นตัวป้องกัน SQLiหลัก
+WAFช่วยได้บาง Pattern
+
+แต่ Parameterized Queryยังเป็น Root Fix
+199) WAF Limit
+Payload Encoding/Novel Syntaxสามารถ bypass pattern matchingได้
+
+และ WAFไม่เห็น Business Contextทั้งหมด
+200) Security Scanner Limit
+Scannerอาจเจอ SQLi endpointsง่าย ๆ
+
+แต่ Dynamic Report/Second-order injectionsอาจยาก
+
+จึงต้อง Secure Codingเป็นหลัก
+201) Mental Model: SQL Injection
+Databaseต้องเห็น User Inputเป็น Value ไม่ใช่ SQL Syntax
+
+202) Mental Model: Command Injection
+Operating System Processต้องได้รับ Arguments ไม่ใช่ Shell Stringที่ Userช่วยเขียน
+
+203) Mental Model: NoSQL Injection
+Query Object Structureต้องถูกสร้างโดย Application ไม่ใช่ให้ Clientส่ง Query Operatorsเข้ามาเอง
+
+204) Mental Model: Validation
+Validationบอกว่า Dataนี้สมเหตุสมผลหรือไม่ แต่ Safe APIเป็นสิ่งที่ป้องกันไม่ให้ Dataเปลี่ยนเป็น Code
+
+205) Injection Mental Modelรวม
+Untrusted input
+↓
+Validate
+↓
+Convert to typed data
+↓
+Use structured/parameterized API
+↓
+Execute with least privilege
+
+สรุป 7.8
+Injectionเกิดเมื่อ:
+Data
+→ ถูกตีความเป็น Code / Query / Command
+
+การป้องกันหลักคือ:
+SQL values
+→ Parameterized Query / Prepared Statement
+
+Dynamic identifiers
+→ Allowlist mapping
+
+Shell commands
+→ Avoid shell / use argument arrays
+
+NoSQL
+→ Strict schema + trusted query construction
+
+Paths
+→ Resource IDs + controlled mapping
+
+และอย่าลืมว่า:
+Validation
++
+Parameterized/Structured APIs
++
+Least Privilege
++
+Safe Error Handling
+
+ต้องทำงานร่วมกัน
+
+หลักที่ควรจำที่สุดคือ:
+อย่าแก้ Injectionด้วยการไล่ block ตัวอักษรอันตราย แต่ให้แก้ที่โครงสร้างของโปรแกรม โดยแยก Data ออกจาก Code ให้ชัดเจนตั้งแต่ต้น
+
+
+7.9 API Security, Rate Limiting, Abuse Prevention & Webhook Security แบบลงลึก
+บทนี้จะลงลึกว่า API ที่ “เขียนถูกและมี Auth แล้ว” ยังสามารถถูก Abuse ได้อย่างไร เช่น Brute Force, OTP Spam, Credential Stuffing, Replay Attack, API Key รั่ว, Webhook ปลอม และ Request ซ้ำ รวมถึงวิธีใช้ Rate Limit, Idempotency, HMAC, Timestamp และ Nonce เพื่อป้องกัน
+
+Mental Model:
+Request
+↓
+Authenticate
+↓
+Authorize
+↓
+Validate
+↓
+Rate Limit / Abuse Check
+↓
+Replay / Idempotency Check
+↓
+Execute
+↓
+Audit
+
+หลักสำคัญที่สุดคือ:
+API Security ไม่ได้มีแค่ “ใครเรียกได้” แต่ต้องรวมถึง “เรียกได้บ่อยแค่ไหน, เรียกซ้ำได้ไหม, ใช้ผิดเจตนาได้หรือไม่ และ Request นี้มาจากคู่สัญญาที่เชื่อถือได้จริงหรือไม่”
+
+1) API Abuse คืออะไร
+API Abuse คือการใช้ API:
+ถูก syntax
+ถูก protocol
+แต่ผิดเจตนา
+
+ตัวอย่าง:
+ส่ง OTP 10,000 ครั้ง
+ลอง password หลายล้านครั้ง
+ยิง search จน DB หนัก
+กด claim promotion ซ้ำ
+
+ไม่มี SQL Injectionก็สร้างความเสียหายได้
+2) Security Bug ไม่จำเป็นต้องเป็น “Hack”
+สมมติ API:
+POST /send-otp
+
+ทำงานถูกทุกอย่าง
+
+แต่ไม่มี Rate Limit
+
+Botยิง:
+100,000 requests
+
+ผล:
+SMS cost
+user harassment
+provider rate limit
+service degradation
+
+นี่คือ Security Problem
+3) Rate Limiting คืออะไร
+Rate Limiting = จำกัดจำนวน Request ภายในช่วงเวลา
+
+เช่น:
+5 requests / minute
+
+หรือ:
+100 requests / hour
+
+4) Rate Limit ต่ออะไรได้บ้าง
+เช่น:
+IP
+user ID
+account
+phone number
+email
+API key
+tenant
+endpoint
+
+ไม่ควรมีแค่แบบเดียวทุกกรณี
+5) Rate Limit ต่อ IP
+ตัวอย่าง:
+100 req/min/IP
+
+ช่วยลด:
+simple bot
+basic DoS
+brute force
+
+แต่มีข้อจำกัด
+6) NAT Problem
+บริษัท/มหาวิทยาลัยอาจมี Users หลายร้อยคนออกผ่าน Public IP เดียว
+
+ถ้าจำกัด IP ต่ำเกินไป:
+legitimate users block กันเอง
+
+7) Distributed Attack
+Attackerอาจมี:
+10,000 IPs
+
+Rate Limitต่อ IPอย่างเดียวจึงไม่พอ
+8) Rate Limit ต่อ Account
+Login:
+5 failed attempts/account/5min
+
+ช่วย Brute Force Accountเดียว
+9) แต่ Account Limitอย่างเดียวมี DoS Risk
+Attackerรู้ Emailของ Victim
+
+แล้วยิง fail attempts
+
+ทำให้ Victimถูก lock
+
+เรียกว่า:
+account lockout abuse
+
+10) Better Approach
+ใช้หลาย Signals:
+IP
+account
+device
+velocity
+risk
+
+พร้อม Progressive Delay/Challenge
+11) Rate Limit ต่อ Phone Number
+เหมาะกับ OTP
+
+เช่น:
+3 OTP sends / 10 minutes / phone
+
+ช่วยป้องกัน SMS Spam
+12) Rate Limit ต่อ User
+Authenticated APIs เช่น:
+100 exports/day/user
+
+ช่วยกัน Resource Abuse
+13) Rate Limit ต่อ Tenant
+ใน SaaS:
+tenant A
+
+ไม่ควรใช้ Resourceทั้งหมดจน Tenant Bช้า
+14) Global Rate Limit
+ใช้ป้องกันระบบรวม
+
+เช่น:
+10,000 req/s globally
+
+ถ้าเกินอาจ:
+load shed
+
+15) Endpoint-specific Rate Limit
+Login:
+เข้ม
+
+Public product list:
+ผ่อนกว่า
+
+Export report:
+เข้มด้าน concurrency
+
+แต่ละ Endpointมี Costไม่เท่ากัน
+16) Rate Limit ไม่ควรวัดแค่จำนวน Request
+Requestหนึ่งอาจแพงมาก
+
+เช่น:
+generate 1GB report
+
+จึงต้องคิด:
+request cost
+concurrency
+CPU
+DB
+external provider cost
+
+ด้วย
+17) Cost-based Limiting
+เช่น:
+normal request = 1 unit
+report = 20 units
+AI generation = 50 units
+
+ช่วยจัด Resource Fairness
+18) Concurrency Limit
+บาง Operationไม่ควรรันพร้อมกันมากเกิน
+
+เช่น:
+max 2 exports/user
+
+ต่างจาก Rate Limitที่วัด Requestsต่อเวลา
+19) Rate vs Concurrency
+จำ:
+Rate limit
+→ กี่ครั้งต่อเวลา
+
+Concurrency limit
+→ พร้อมกันได้กี่งาน
+
+20) Burst
+Userอาจยิง:
+20 requestsทันที
+
+แล้วเงียบ
+
+ระบบ Rate Limitต้องตัดสินว่าจะยอม Burstแค่ไหน
+21) Token Bucket
+Algorithmยอดนิยม
+
+มี Bucketที่มี Tokens
+
+แต่ละ Requestใช้ Token
+
+Tokensเติมกลับตามเวลา
+
+ช่วยรองรับ Burstได้บางส่วน
+22) Leaky Bucket
+Conceptคือ Requestไหลออกด้วย Rateคงที่
+
+ช่วย smooth Traffic
+23) Fixed Window
+เช่น:
+100 req
+ระหว่าง 12:00–12:01
+
+ง่ายแต่มี Boundary Burst Problem
+24) Boundary Burst
+Userยิง:
+100 requests at 12:00:59
+100 requests at 12:01:00
+
+จริง ๆ ได้ 200 requestsใน 1 วินาที
+
+แม้แต่ละ Windowไม่เกิน 100
+25) Sliding Window
+นับ Requestในช่วงเวลาย้อนหลังจริง
+
+แม่นกว่า แต่ Implementation/Storageซับซ้อนขึ้น
+26) Redisมักใช้ทำ Distributed Rate Limit
+เพราะหลาย App Instancesต้องใช้ Counterร่วมกัน
+
+เช่น:
+App A
+App B
+App C
+↓
+Redis
+
+27) In-memory Rate Limitมีข้อจำกัด
+ถ้ามี 4 replicas:
+แต่ละ instanceให้ 100/min
+
+รวมอาจเป็น:
+400/min
+
+ถ้าไม่มี Shared State
+28) Load Balancerทำให้ Requestกระจาย
+ดังนั้น Production Multi-instanceควรคิด Distributed Limiting
+29) Redis Failure
+ถ้า Rate Limit Storeล่ม ต้องตัดสิน:
+fail open
+หรือ
+fail closed
+
+30) Fail Open
+ถ้า Redisล่ม:
+allow requests
+
+ข้อดี:
+availabilityสูง
+
+ข้อเสีย:
+abuse protectionหาย
+
+31) Fail Closed
+ถ้า Redisล่ม:
+deny
+
+Securityสูงกว่าแต่ Availabilityอาจพัง
+32) เลือกตาม Endpoint
+เช่น:
+public product list
+→ fail openอาจยอมรับได้
+
+password reset
+→ stricter behavior
+
+ไม่มีคำตอบเดียว
+33) HTTP 429
+ถ้า Rate Limitเกิน มักตอบ:
+429 Too Many Requests
+
+34) Retry-After
+อาจส่ง:
+Retry-After: 60
+
+เพื่อบอก Clientให้ลองใหม่ภายหลัง
+35) อย่า Retry 429ทันที
+Clientควร:
+backoff
+
+ไม่งั้นกลายเป็น Retry Storm
+36) Brute Force
+Brute Force = ลอง Credentialจำนวนมากกับ Account
+
+เช่นลอง Password:
+password1
+password2
+password3
+...
+
+37) Credential Stuffing
+ต่างจาก Brute Force
+
+ใช้:
+email/password ที่รั่วจากเว็บอื่น
+
+มาลองกับเว็บเรา
+
+เพราะ Users reuse password
+38) ป้องกัน Credential Stuffing
+เช่น:
+rate limiting
+MFA
+breached-password detection
+risk scoring
+bot protection
+
+39) Password Hash Costช่วย Offline Attack
+แต่ Rate Limitingช่วย:
+online attack
+
+คนละ Layer
+40) Account Enumeration
+Login response:
+Email not found
+
+vs:
+Wrong password
+
+อาจบอก Attackerว่า Accountไหนมีอยู่
+41) Generic Error
+เช่น:
+Invalid credentials
+
+ลด Enumeration
+42) แต่ Timingก็ leakได้
+ถ้า Unknown Userตอบเร็วมาก
+
+Known Userต้อง Argon2 Verify 200ms
+
+Attackerอาจ inferจาก Timing
+43) Mitigation
+บางระบบทำ Dummy Password Hash Verificationเมื่อ Userไม่พบ
+
+ช่วยให้ Timingใกล้กันขึ้น
+
+ตาม Risk
+44) OTP Abuse
+มีสองมิติ:
+send abuse
+verify abuse
+
+45) OTP Send Abuse
+ยิง:
+send OTP
+
+ซ้ำจน:
+SMS cost
+spam victim
+provider quota exhausted
+
+46) OTP Verify Abuse
+6-digit OTPมี Spaceจำกัด
+
+ถ้า unlimited attempts:
+brute force possible
+
+47) OTP Protection
+ต้องมี:
+short expiry
+attempt limit
+send cooldown
+per phone limit
+per IP limit
+global limit
+single-use
+
+48) OTP Attempt Counterต้อง Atomic
+สอง Serversไม่ควร verifyพร้อมกันแล้วทั้งคู่เห็น:
+attempts = 0
+
+ต้องใช้ Atomic Update/Redis atomic op/transaction
+49) OTP Send Cooldown
+เช่น:
+resend after 60 seconds
+
+ช่วย UXและ Cost
+
+แต่ยังต้อง Rate Limitระยะยาวด้วย
+50) Cooldownอย่างเดียวไม่พอ
+Attackerอาจ:
+ส่ง 1 ครั้งต่อนาที 24 ชั่วโมง
+
+ยัง Spamได้
+
+ต้องมี Window Limitsเพิ่ม
+51) Multi-dimensional Rate Limit
+OTPอาจใช้:
+per IP
+per phone
+per account
+global provider quota
+
+พร้อมกัน
+52) CAPTCHA
+ช่วยลด Automated Abuse
+
+แต่ไม่ควรเป็น Controlเดียว
+
+เพราะ:
+solving services
+accessibility
+bot sophistication
+
+53) CAPTCHAควรใช้ Risk-based
+ไม่จำเป็นต้องโชว์ทุก Userทุกครั้ง
+
+อาจ triggerเมื่อ:
+high velocity
+suspicious IP
+repeated failures
+
+54) API Key คืออะไร
+API Keyเป็น Credentialสำหรับ Client/Application
+
+เช่น:
+X-API-Key: ...
+
+ใช้ใน Integrationsบางแบบ
+55) API Keyไม่ควรอยู่ Frontendถ้าเป็น Secret
+ถ้าใส่ใน Browser Bundle:
+ทุกคนอ่านได้
+
+ไม่สามารถถือเป็น Secret
+56) Public API Keyมีได้บางประเภท
+เช่น Keysที่ออกแบบมาเป็น Identifierและถูกจำกัดด้วย:
+origin
+quota
+scope
+
+แต่ต้องเข้าใจว่าไม่ Secret
+57) Secret API Keyควรอยู่ Server-side
+เก็บใน:
+secret manager
+environment
+secure config
+
+ไม่ commit Git
+58) API Key Scope
+ไม่ควรให้ Keyเดียว:
+read/write/delete/admin
+
+ถ้า Integrationใช้แค่:
+read
+
+59) API Key Per Client
+ดีกว่า Shared Keyหนึ่งอันสำหรับ Partnersทั้งหมด
+
+เพราะ:
+revokeเฉพาะ clientได้
+auditได้
+rate limitแยกได้
+
+60) API Key Rotation
+ควรรองรับ:
+old key
++
+new key
+
+ช่วงเปลี่ยนผ่าน
+
+เพื่อ rotateโดยไม่ downtime
+61) API Key Storageใน DB
+ถ้า API Keyใช้ lookupแบบ Password-like
+
+สามารถเก็บ:
+hash(key)
+
+แทน Raw Keyได้ในหลาย Designs
+62) Show Key Once
+ตอนสร้าง Key:
+display raw key once
+
+จากนั้นเก็บ Hash
+
+ถ้าหายให้สร้างใหม่
+
+Patternคล้าย GitHub-style tokens
+63) Key Prefix
+Tokenอาจมี Prefix:
+prod_xxx
+test_xxx
+
+ช่วย Userแยก Environment
+
+แต่ Prefixไม่ใช่ Secret
+64) Key ID + Secret
+บาง Designใช้:
+key_id
+secret
+
+เพื่อ lookup Keyเร็วโดยไม่ต้อง scan hashทั้งหมด
+65) Secretไม่ควรถูกส่งใน Query String
+ไม่ใช้:
+?api_key=secret
+
+ถ้าเลี่ยงได้
+
+เพราะอาจหลุด:
+logs
+history
+analytics
+
+66) ใช้ Header
+เช่น:
+Authorization: Bearer ...
+
+หรือ Provider-specific Header
+
+แล้ว redact Logs
+67) Replay Attack คืออะไร
+Replay Attackคือ:
+Attackerได้ Requestที่เคย valid แล้วส่งซ้ำอีกครั้ง
+
+โดยไม่ต้องรู้ Secretข้างใน
+68) Example Payment Webhook
+Providerส่ง:
+payment successful
+
+Attacker captureแล้ว replay 100 ครั้ง
+
+ถ้า Systemไม่ Dedup:
+order credited 100 times
+
+69) Signatureอย่างเดียวไม่ได้หยุด Replay
+Requestเดิมยังมี:
+valid signature
+
+เพราะ Payloadไม่เปลี่ยน
+70) ต้องมี Replay Protectionเพิ่ม
+เช่น:
+timestamp
+nonce
+event ID
+idempotency
+
+71) Timestamp
+Senderใส่:
+timestamp
+
+ลง Messageที่ Signด้วย
+
+Receiverตรวจว่า:
+request age <= allowed window
+
+72) Example
+อนุญาต Requestอายุไม่เกิน:
+5 minutes
+
+Requestเก่า 1 ชั่วโมง reject
+73) Timestampต้อง Signด้วย
+ถ้า Signatureไม่ครอบ Timestamp
+
+Attackerสามารถเปลี่ยน Timestampเป็นเวลาปัจจุบัน
+
+ดังนั้น Signature Dataควรรวม:
+timestamp
++
+raw body
+
+ตาม Protocol
+74) Nonce
+Nonce = ค่า Unique/Randomที่ใช้ครั้งเดียว
+
+Receiverเก็บว่า Nonceไหนใช้แล้ว
+
+ถ้าเจอซ้ำ:
+reject
+
+75) Nonce Storage
+ต้องเก็บอย่างน้อยจน Replay Windowหมด
+
+เช่น Redis TTL
+76) Event ID
+Webhook Providerที่ดีมักส่ง:
+event_id
+
+เช่น:
+evt_123
+
+Receiverเก็บ Processed IDs
+77) Event ID + Unique Constraint
+Databaseอาจมี:
+UNIQUE(provider, event_id)
+
+ถ้า Eventเดิมเข้าอีก:
+duplicate rejected
+
+แข็งแรงมาก
+78) Idempotency คืออะไร
+Operation Idempotentหมายถึง:
+Requestซ้ำด้วย Intentเดียวกันไม่ควรสร้างผลลัพธ์ธุรกิจซ้ำ
+
+79) Example
+Create Payment:
+request #1
+→ payment created
+
+same retry
+→ return same payment
+
+ไม่สร้าง Paymentใหม่
+80) Idempotency Key
+Clientส่ง:
+Idempotency-Key: abc123
+
+Serverเก็บ:
+key
+request fingerprint
+result
+status
+
+81) Retryเหตุผลปกติ
+Clientส่ง Request
+
+Serverทำงานสำเร็จ
+
+แต่ Responseหาย
+
+Clientไม่รู้จึง retry
+
+นี่ไม่ใช่ Attackแต่ถ้าไม่มี Idempotencyก็ Duplicateได้
+82) Idempotencyคือทั้ง Reliability + Security
+ช่วย:
+network retries
+double-click
+replay-like duplicate actions
+
+83) Idempotency Keyควร Scope
+เช่น:
+user + endpoint + key
+
+ไม่ใช่ global keyง่าย ๆ จนชนข้าม User
+84) Request Fingerprint
+ถ้า Clientใช้ Keyเดิมแต่ Payloadต่าง:
+should reject
+
+ไม่ควร silently reuse resultผิด Transaction
+85) Example
+Key:
+abc
+
+Requestแรก:
+amount=100
+
+Requestสอง:
+amount=500
+
+ควรถือว่า Error
+86) Idempotency Record States
+เช่น:
+processing
+completed
+failed
+
+ช่วย Concurrent Requestsด้วย
+87) Concurrent Same Key
+Request A/Bเข้าพร้อมกันด้วย Keyเดียว
+
+ต้อง Atomic:
+only one owns processing
+
+อีกตัว:
+wait / return conflict / same result
+
+88) Unique Constraintช่วยได้
+สร้าง Record:
+UNIQUE(idempotency_key)
+
+Requestแรก insertสำเร็จ
+
+Requestสองชน Constraint
+
+ลด Race
+89) Idempotency Record TTL
+ไม่จำเป็นเก็บตลอดชีวิตทุกกรณี
+
+กำหนดตาม Business Retry Window
+
+เช่น:
+24h
+7d
+
+ตาม Operation
+90) Business Operation ID
+บางครั้งดีกว่า Random Idempotency Key
+
+เช่น:
+booking_id + payment_attempt_no
+
+ถ้ามัน represent Intentที่ stableจริง
+91) อย่า Generate Idempotency Keyใหม่ตอน Retry
+ไม่งั้น Serverมองเป็น Operationใหม่
+
+Keyต้อง stableต่อ Business Intent
+92) Webhook คืออะไร
+Webhookคือ:
+ระบบภายนอกเรียก HTTP Endpointของเราเมื่อมี Event
+
+เช่น:
+payment success
+shipment update
+LINE event
+
+93) Webhookคือ Public Attack Surface
+Endpointมัก Public Internet
+
+Attackerสามารถส่ง Requestปลอมเข้ามาได้
+
+ต้อง authenticate Sender
+94) อย่าเชื่อเพราะ Source IPอย่างเดียว
+IP allowlistช่วยได้
+
+แต่ Provider IPอาจ:
+เปลี่ยน
+มี rangeใหญ่
+อยู่หลัง cloud
+
+และ IPไม่ได้พิสูจน์ Message Integrityเสมอไป
+95) Webhook Signature
+Providerมัก Sign Request
+
+Receiverใช้ Secret/Public Key Verify
+
+เช่น HMAC
+96) HMAC
+HMAC = Hash-based Message Authentication Code
+
+Concept:
+message
++
+shared secret
+↓
+HMAC
+↓
+signature
+
+97) HMACให้สองอย่างหลัก
+Integrity
+→ messageไม่ถูกแก้
+
+Authenticity
+→ senderมี shared secret
+
+98) HMACไม่ Encrypt Payload
+ใครเห็น Requestยังอ่าน Bodyได้
+
+ดังนั้นยังใช้:
+HTTPS
+
+เพื่อ Transport Confidentiality
+99) HMAC Verification
+Receiverต้องคำนวณ HMACจาก:
+exact message bytes
+
+แล้ว compareกับ Signature Header
+100) Raw Bodyสำคัญมาก
+ถ้า Sender Sign JSON bytes:
+{"a":1,"b":2}
+
+แต่ Receiver parseแล้ว stringifyใหม่เป็น:
+{
+  "a": 1,
+  "b": 2
+}
+
+Bytesต่างกัน
+
+Signatureอาจไม่ตรง
+101) ดังนั้น Verifyก่อน Parseในหลาย Protocols
+Flow:
+raw request body
+↓
+verify signature
+↓
+parse JSON
+↓
+validate schema
+
+102) Canonicalization
+ถ้า Protocolกำหนด Canonical Formชัดก็ใช้ตาม Spec
+
+แต่ห้าม inventเอง
+103) HMAC Algorithm
+เช่น:
+HMAC-SHA256
+
+ใช้ maintained crypto library
+
+ไม่เขียน hash logicเอง
+104) Secret Key
+ต้อง:
+random
+high entropy
+server-side only
+rotatable
+
+105) HMAC Secretใน Frontendไม่ได้
+เพราะใครก็อ่านได้
+
+Webhook Verificationต้องอยู่ Server
+106) Constant-time Comparison
+Signature compareควรใช้ Crypto Libraryที่ทำ:
+timing-safe comparison
+
+แทน String comparisonธรรมดาใน Security-sensitive implementations
+107) ทำไม
+String comparisonอาจหยุดเมื่อเจอ Characterแรกที่ไม่ตรง
+
+เวลา Responseต่างกันเล็กน้อย
+
+อาจเกิด Timing Side-channelในบาง scenarios
+
+ใช้ library saferกว่า
+108) Signature Header
+เช่น Concept:
+X-Signature: ...
+X-Timestamp: ...
+
+แต่ชื่อขึ้นกับ Provider
+109) Sign Timestamp + Body
+Concept:
+signedPayload =
+timestamp + "." + rawBody
+
+แล้ว HMAC
+
+ช่วย Replay Protection
+110) Replay Window
+Receiverตรวจ:
+abs(now - timestamp) <= 5 minutes
+
+ตาม Protocol
+111) Time Sync
+ถ้า Server Clockผิด:
+valid webhook rejected
+
+หรือ Replay Windowผิด
+
+NTPจาก Topic 6สำคัญอีกครั้ง
+112) Signature Verificationไม่ได้แทน Schema Validation
+Providerอาจส่ง valid signed payloadที่:
+missing field
+unknown version
+invalid business state
+
+ต้อง validateต่อ
+113) Signature Verificationไม่ได้แทน Idempotency
+Providerอาจส่ง Eventเดิมซ้ำแบบถูกต้อง
+
+Webhook Systemsมักเป็น:
+at-least-once delivery
+
+ต้อง Deduplicate
+114) Webhook Providers Retryเป็นเรื่องปกติ
+ถ้าเรา:
+timeout
+500
+
+Providerอาจส่งซ้ำ
+
+นี่ไม่ใช่ Attack
+
+ดังนั้น Consumerต้อง Idempotent
+115) Webhook Processing Pattern
+แนะนำ:
+receive
+↓
+verify signature
+↓
+validate
+↓
+dedup event
+↓
+persist/enqueue
+↓
+respond quickly
+↓
+process async
+
+116) ทำไม Respondเร็ว
+ถ้า Webhook Handlerทำงาน 30 วินาที
+
+Providerอาจ timeoutแล้ว retry
+
+เพิ่ม Duplicates
+117) Async Processing
+หลัง verifyแล้ว:
+enqueue event
+
+Workerค่อยทำ Heavy Work
+
+ช่วย Reliability
+118) แต่ต้อง Persistก่อนตอบ Success
+ไม่ควร:
+return 200
+↓
+then enqueue
+
+ถ้า Process crashหลัง 200
+
+Eventหาย
+119) Better
+persist inbox/event
+↓
+commit
+↓
+return 2xx
+
+แล้ว Worker processภายหลัง
+
+นี่คล้าย Inbox Patternจาก Topic 5
+120) Webhook Inbox
+Table:
+provider
+event_id
+payload
+received_at
+status
+
+มี Unique Constraint
+
+ช่วย:
+dedup
+audit
+retry
+reconciliation
+
+121) Don't trust Event Order
+Providerอาจส่ง:
+event 2
+ก่อน
+event 1
+
+Network/retryทำให้ Out-of-orderได้
+122) State Transition Validation
+อย่า blindly set:
+booking.status = webhook.status
+
+ต้องตรวจ Business State
+123) Source of Truth
+Payment Providerอาจเป็น Source of Truthเรื่อง:
+payment
+
+แต่ Webhookเป็น Notification
+
+ถ้าข้อมูลสำคัญ/ขัดแย้ง อาจ query Provider API Reconcileอีกครั้ง
+124) Webhook Payloadไม่ควร set Local Privileges
+เช่น User-controlled/custom metadataไม่ควรเอามา mapเป็น:
+role=admin
+
+โดยไม่ validation
+125) Webhook Secret Rotation
+ควรรองรับ:
+current secret
+previous secret
+
+ช่วงสั้น ๆ
+
+เพื่อ rotateโดยไม่ downtime
+126) Signature Versioning
+Headerอาจมี:
+v1=...
+v2=...
+
+ทำให้ Providerเปลี่ยน Algorithm/Secretในอนาคตได้
+127) Multiple Signatures
+บาง Providerส่งหลาย Signatureช่วง Key Rotation
+
+Receiverลองเฉพาะ Algorithms/Versionsที่อนุญาต
+
+ไม่ accept arbitrary downgrade
+128) Webhook Endpoint URLเป็น Secretไหม
+บาง Providerใช้ Random URL
+
+เช่น:
+/webhooks/abc-secret-path
+
+ช่วย Obscurityนิดหน่อย
+
+แต่ไม่ควรแทน Signature Authentication
+129) API Key in URL Webhook
+ถ้าใช้:
+/webhook?token=secret
+
+เสี่ยงหลุด Logs
+
+ถ้า Protocolบังคับต้อง redactอย่างดี
+
+Signature Headerดีกว่าเมื่อออกแบบเอง
+130) IP Allowlistเป็น Defense Layer
+ใช้ร่วมกับ Signatureได้
+
+แต่ต้องมี Process update Provider IP ranges
+
+ไม่งั้น outageตอน Providerเปลี่ยน IP
+131) mTLS
+mTLS = Mutual TLS
+
+ทั้ง ClientและServerมี Certificates
+
+ใช้ยืนยัน Machine Identityระดับ Transport
+
+เหมาะกับ High-trust B2Bบางระบบ
+132) TLSปกติ
+Client verify Server
+
+mTLS:
+Client verifies Server
++
+Server verifies Client certificate
+
+133) mTLSไม่ได้แทน Business Idempotency
+Requestจาก Clientที่ validยังถูก retryได้
+
+ยังต้อง Idempotency/State checks
+134) Abuse Preventionไม่ใช่แค่ Rate Limit
+รวม:
+quotas
+CAPTCHA
+risk scoring
+fraud detection
+concurrency limits
+state rules
+idempotency
+
+135) Quota
+Rate Limitเป็นระยะสั้น
+
+Quotaอาจเป็น:
+1000 requests/day
+10 reports/month
+
+Business-level limit
+136) Rate Limit vs Quota
+Rate
+→ velocity
+
+Quota
+→ total allowance
+
+ใช้ร่วมกันได้
+137) Promo Abuse
+เช่น:
+1 free coupon/user
+
+Attackerสร้างหลาย Account
+
+Rate Limitอย่างเดียวอาจไม่พอ
+
+ต้อง Anti-abuse/Fraud Signalsระดับ Business
+138) Business Invariant
+เช่น:
+one privilege per eligible customer
+
+ควร enforceด้วย:
+unique constraint
+transaction
+trusted identity
+
+ไม่ใช่แค่ UI disable button
+139) Double-click Abuse
+Userกด:
+Pay
+Pay
+Pay
+
+Frontend disable buttonช่วย UX
+
+แต่ Backendยังต้อง Idempotent
+140) Frontend Debounceไม่ใช่ Security
+Attackerเรียก APIตรงได้
+141) Duplicate Create
+เช่น:
+POST /booking
+
+ถ้ายิงสองครั้ง
+
+อาจสร้าง Bookingสองรายการ
+
+ใช้:
+business unique key
+idempotency key
+
+142) Idempotency vs Deduplication
+Idempotency:
+same intent gives same outcome
+
+Deduplication:
+detect duplicate message/request
+
+เกี่ยวข้องกันแต่ไม่เหมือนกัน 100%
+143) Exactly-once Illusion
+Distributed Systemไม่ควรหวังว่า Networkจะส่งครั้งเดียวแน่นอน
+
+ออกแบบ:
+at-least-once
++
+idempotent processing
+
+แข็งแรงกว่า
+144) API Request Signing
+B2B APIบางระบบ Signทุก Request
+
+เช่น HMAC:
+method
+path
+timestamp
+body hash
+
+รวมใน Signature
+145) ทำไม Sign Method/Path
+ถ้า Signแค่ Body:
+
+Attackerอาจ reuse Bodyกับ Endpointอื่นได้ในบาง Design
+
+จึง bind Signatureกับ:
+HTTP method
+path
+timestamp
+body
+
+ตาม Spec
+146) Canonical Request
+ต้องกำหนดชัดว่า:
+method case
+path encoding
+query sorting
+header selection
+body hashing
+
+ไม่งั้น Client/Server Signไม่ตรง
+147) อย่าออกแบบ Signature Protocolเองถ้าไม่จำเป็น
+รายละเอียด Canonicalization/Replay/Key Rotationซับซ้อน
+
+ใช้มาตรฐานหรือ Protocolที่ออกแบบดี
+148) HMAC Secret Separation
+แต่ละ Partnerควรมี Secretต่างกัน
+
+ไม่ใช้ Secretเดียวทั้งโลก
+149) Partner Revocation
+ถ้า Partner A keyหลุด:
+revoke A
+
+โดย Partner Bไม่กระทบ
+150) Partner Rate Limit
+จำกัดแยก:
+partner A
+partner B
+
+ตาม Contract/SLA
+151) API Client Identity
+Requestควรรู้:
+which client?
+which user?
+which tenant?
+
+ตาม Context
+
+ช่วย Audit/Rate Limit
+152) Layered Limit
+ตัวอย่าง:
+global = 10000/s
+tenant = 1000/s
+user = 100/s
+OTP = 3/10min/phone
+
+เรียกว่า Hierarchical Controls
+153) Expensive Endpoint
+Search:
+GET /search
+
+อาจต้อง:
+minimum query length
+max filters
+pagination cap
+rate limit
+query timeout
+
+154) Export Endpoint
+อาจใช้ Queueแทน synchronous request
+
+Flow:
+request export
+↓
+quota/concurrency check
+↓
+queue
+↓
+worker
+
+ป้องกัน App/DB saturation
+155) File Upload Abuse
+ต้องมี:
+max size
+rate limit
+storage quota
+MIME validation
+
+ไม่งั้น Userเติม Storageจนเต็มได้
+156) Authentication Endpoint Enumeration
+Rate Limitต้องระวังไม่สร้าง Side-channel เช่น:
+existing user gets one limit
+unknown user another behavior
+
+Attackerอาจ infer account existence
+157) Password Reset Abuse
+Attackerอาจยิง Reset Emailให้ Victimซ้ำ ๆ
+
+ต้อง:
+generic response
+cooldown
+per account/IP limits
+
+158) Email/SMS Costเป็น Security Resource
+Third-party Billสามารถถูก Abuseได้
+
+ต้อง monitor:
+OTP cost
+email volume
+provider quota
+
+159) Budget Alert
+เช่น SMS volumeเพิ่ม 10x
+
+อาจ alertแม้ระบบ technically healthy
+
+นี่คือ Business Security Monitoring
+160) Rate Limit Headers
+APIอาจตอบ Metadataเช่น:
+limit
+remaining
+reset
+
+แต่ Header conventionsต่างกัน
+
+ใช้ตาม Standard/Platform
+161) อย่า expose Security Logicเกินจำเป็น
+เช่นบอก Attackerละเอียดว่า:
+เหลือ password guesses 1 ครั้ง
+
+ขึ้นกับ UX/Risk
+162) Rate Limit Key Cardinality
+ถ้า Attackerส่ง Random Usernameล้านค่า
+
+แล้ว Redisสร้าง Keyล้าน Keys:
+memory abuse
+
+ต้องออกแบบ Key TTL/limitsดี
+163) Attacker-controlled Keys
+อย่าใช้ Request Stringยาว ๆทั้งหมดเป็น Redis Keyโดยตรง
+
+ใช้:
+hash
+normalized identifier
+
+และ TTL
+164) Rate Limiterเองโดน DoSได้
+ถ้าทุก Requestต้อง expensive DB queryเพื่อตรวจ Limit
+
+Controlอาจกลายเป็น Bottleneck
+
+ต้อง design efficient
+165) Local + Global Limits
+บางระบบใช้:
+local fast limiter
++
+central authoritative limiter
+
+สำหรับ High-scale systems
+
+ซับซ้อนขึ้นแต่ลด central bottleneck
+166) CDN/WAF Rate Limit
+สามารถ block Trafficก่อนถึง App
+
+ดีสำหรับ:
+bot bursts
+DDoS-like traffic
+
+167) App-level Rate Limitยังจำเป็น
+WAFไม่รู้ Business Identityดีพอ เช่น:
+per account
+per phone
+per tenant
+
+168) Network DDoS vs Application Abuse
+ต่างกัน:
+DDoS
+→ overwhelm network/infrastructure
+
+API abuse
+→ use expensive legitimate functions
+
+ต้องมี Controlsหลาย Layer
+169) Load Shedding
+ถ้าระบบใกล้ Saturation:
+reject noncritical traffic
+
+ดีกว่าปล่อยทั้งหมด timeout
+170) Priority
+เช่น:
+payment > report export
+
+ช่วง overloadอาจ pause low-priority jobs
+171) Retry Abuse
+Client Bugอาจ retry:
+100 times/sec
+
+ไม่ maliciousแต่สร้าง Incident
+
+APIต้อง boundedด้วย Rate Limit/Idempotency
+172) Exponential Backoff
+Clientควร:
+wait longer after each failure
+
+เช่น concept:
+1s
+2s
+4s
+8s
+
+173) Jitter
+เพิ่ม Random Delay
+
+ช่วยไม่ให้ Clientsทั้งหมด Retryพร้อมกัน
+174) Serverควรบอก Retryable Error
+แยก:
+429
+503
+timeout
+
+กับ Permanent Errorเช่น:
+400
+401
+403
+
+ไม่ควร retryมั่ว
+175) Webhook Retry
+Providerจะ retry 5xx
+
+ถ้า Errorเป็น Permanent Payload Invalid:
+
+บาง Protocolอาจยัง retry
+
+เราต้องรู้ Provider Behavior
+176) Dead-letter Webhook
+ถ้า Event processไม่ได้หลังหลายครั้ง
+
+เก็บ:
+failed state
+reason
+payload
+
+สำหรับ manual/reconciliation
+177) อย่า return 200ทั้งที่ทิ้ง Event
+ถ้า Validation/System Errorชั่วคราวแต่ตอบ 200
+
+Providerจะคิดว่าสำเร็จและไม่ retry
+
+Eventอาจหาย
+178) แต่ Invalid Signatureควร Reject
+เช่น:
+401/403
+
+ตาม Protocol
+
+ไม่ processเด็ดขาด
+179) Unknown Event Type
+อาจ:
+log + ignore
+
+หรือ failตาม Provider Contract
+
+ไม่ควร crashทั้ง Handler
+180) Versioned Webhooks
+Providerอาจเปลี่ยน Schema
+
+ควร track:
+event version
+API version
+
+และ parseแบบ explicit
+181) Webhook Secretใน Logs
+ห้าม Log:
+signature secret
+raw Authorization credentials
+
+Signature Headerเองก็อาจต้อง redactตาม Protocol
+182) Raw Body Logging
+Raw Webhook Bodyอาจมี PII/Payment Data
+
+อย่า logทั้งหมดแบบ default
+183) Audit Metadata
+เก็บพอ:
+provider
+event_id
+type
+received_at
+result
+
+Payloadเก็บตาม Retention/Security Policy
+184) Webhook Endpointควรเล็ก
+ไม่ควรมี Heavy Business Logicตรง Handler
+
+เพราะ:
+timeout
+retry
+duplicate
+
+ทำให้ซับซ้อน
+185) Webhook Patternที่แข็งแรง
+Public endpoint
+↓
+Verify
+↓
+Persist inbox
+↓
+Return 2xx
+↓
+Worker
+↓
+Business transaction
+↓
+Mark processed
+
+186) Reconciliationยังจำเป็น
+แม้ Webhookดี
+
+Eventอาจ:
+never arrive
+provider outage
+config issue
+
+Critical systemsควรมี Reconciliation Job
+187) Example Payment
+Webhook says success
+
+แต่ถ้าไม่มา:
+
+Schedulerอาจ query Providerว่า:
+payment status?
+
+แล้ว repair Local State
+188) Webhook = Hint/Notificationในบาง Systems
+Source of Truthอาจยังเป็น Provider API/ledger
+
+ขึ้นกับ Integration
+189) API Abuse Monitoring
+Metrics:
+429 rate
+login failures
+OTP sends
+invalid signatures
+replay rejects
+idempotency conflicts
+
+ช่วย detect Attack/Bugs
+190) Rate Limit Spike
+ถ้า 429พุ่งหลัง Deploy
+
+อาจไม่ได้เป็น Attack
+
+อาจ:
+frontend loop
+retry bug
+
+ต้อง correlate deployment
+191) Invalid Signature Spike
+อาจเกิด:
+attack
+secret rotation mismatch
+raw body parsing change
+provider bug
+
+ไม่ควร assume attackerทันที
+192) Abuse Dashboard
+ควรมี:
+top IPs
+top accounts
+top endpoints
+429s
+OTP volume
+webhook failures
+
+ตาม Privacy Policy
+193) Blocklist IP
+มีประโยชน์ชั่วคราว
+
+แต่ไม่ควรเป็น primary defense
+
+IPเปลี่ยนง่ายและ Shared IPมี false positives
+194) Allowlist API Clients
+B2B integrationsบางระบบสามารถ allow:
+known certificates
+known keys
+known network ranges
+
+ลด Attack Surface
+195) API Gateway
+สามารถทำ:
+authentication
+rate limit
+request size limits
+WAF
+routing
+
+แต่ Business Authorizationยังอยู่ Service
+196) Request Size Limit
+ป้องกัน:
+huge JSON body
+huge upload
+
+จน Memory/CPUพัง
+197) Nginx Limit
+เช่นมี Concept:
+client_max_body_size
+
+ช่วย blockก่อนถึง App
+
+แต่ Appยังควร validate File Size/Business Limit
+198) Timeout
+APIต้องมี:
+request timeout
+DB timeout
+external API timeout
+
+เพื่อไม่ให้ Slow Requestกิน Resourcesตลอด
+199) Rate Limitingไม่แทน Timeout
+Requestแค่ 10/sก็ล่มได้ถ้าแต่ละ Requestค้าง 60 วินาที
+200) Concurrency + Timeout + Rate Limit
+สามตัวต้องคิดร่วมกัน
+Rate
+→ arrival speed
+
+Concurrency
+→ simultaneous work
+
+Timeout
+→ max hold time
+
+201) Little's Lawกลับมาใช้
+Concurrencyประมาณ:
+arrival rate × latency
+
+ถ้า Latencyสูง Rateเดิมก็ใช้ Workersมากขึ้น
+202) API Securityจึงเกี่ยวกับ Capacity
+Security Controlsช่วยป้องกัน Resource Exhaustionด้วย
+203) Error Handling
+อย่าตอบ:
+API key ABC invalid because expired at ...
+
+ละเอียดเกินจำเป็น
+
+ภายนอกใช้ generic error
+
+ภายใน Auditละเอียดได้
+204) Authentication Error vs Rate Limit
+อาจตั้งใจไม่บอกว่า:
+account existsแต่ rate limited
+
+ต้อง balance UXกับ Enumeration Risk
+205) API Versioning
+Security Fixบางครั้งต้องเปลี่ยน Contract
+
+เช่นบังคับ Signature v2
+
+ต้องมี Migration Plan
+206) Deprecated API
+Endpointเก่าที่ไม่มี Securityใหม่:
+ยังเป็น Attack Surface
+
+ต้อง decommissionจริง
+
+ไม่ใช่แค่ frontendเลิกใช้
+207) Shadow APIs
+Endpointsที่ไม่มีใครจำได้แต่ยังออนไลน์
+
+เสี่ยงมาก
+
+ควร inventory API Routes
+208) API Inventory
+รู้ว่า:
+endpointไหน public
+endpointไหน authenticated
+ใคร owner
+versionไหน active
+
+ช่วย Security Review
+209) API Documentation
+OpenAPI/Swaggerช่วย inventory
+
+แต่ Production Docsอาจต้อง protectถ้ามี Internal Details
+210) API Security Checklist
+ทุก Endpointถาม:
+Who can call?
+What can they do?
+How often?
+What data can they send?
+
+211) ต่อ:
+Can request be replayed?
+Is operation idempotent?
+What if client retries?
+What if endpoint is abused at scale?
+
+212) Webhook Checklist
+HTTPS?
+Signature?
+Raw body?
+Timestamp?
+Replay protection?
+
+213) ต่อ:
+event ID?
+dedup?
+schema validation?
+async processing?
+reconciliation?
+
+214) OTP Checklist
+send cooldown
+per-phone limit
+per-IP limit
+verify attempts
+expiry
+single-use
+
+215) API Key Checklist
+server-side?
+scoped?
+per-client?
+rotatable?
+hashed at rest where practical?
+
+216) Rate Limit Checklist
+which key?
+which window?
+burst?
+distributed?
+Redis failure behavior?
+
+217) Idempotency Checklist
+stable key?
+scope?
+payload fingerprint?
+atomic claim?
+result retention?
+
+218) Replay Checklist
+timestamp?
+nonce/event ID?
+signed timestamp?
+allowed clock skew?
+used IDs stored?
+
+219) HMAC Checklist
+which exact bytes are signed?
+algorithm fixed?
+secret protected?
+timing-safe verify?
+key rotation?
+
+220) Common Anti-pattern — Rate Limit only by IP
+ไม่พอสำหรับ:
+botnets
+shared NAT
+account-specific abuse
+
+221) Common Anti-pattern — Lock account permanently after few failures
+Attackerใช้เป็น DoSได้
+222) Common Anti-pattern — OTP cooldownอย่างเดียว
+ยัง spamระยะยาวได้
+223) Common Anti-pattern — API keyใน frontend
+ไม่ใช่ Secret
+224) Common Anti-pattern — One API key for all partners
+Blast Radiusสูงและ Auditแย่
+225) Common Anti-pattern — Signature valid = process immediately
+ยังต้อง:
+replay check
+schema validation
+business validation
+
+226) Common Anti-pattern — HMAC without timestamp/event ID
+Replayได้
+227) Common Anti-pattern — Parse JSONก่อน Verifyทั้งที่ Provider signs raw bytes
+Signatureพัง
+228) Common Anti-pattern — No Idempotency on payments/bookings
+Retryสร้าง Duplicate Side Effects
+229) Common Anti-pattern — Generate new idempotency key on retry
+เท่ากับไม่ได้ใช้ Idempotency
+230) Common Anti-pattern — Webhook heavy processing before response
+ทำ Provider retryและ duplicateเพิ่ม
+231) Common Anti-pattern — Webhook responds 200 before durable persist
+Process crashแล้ว Eventหาย
+232) Common Anti-pattern — Trust webhook order
+Distributed delivery reorderได้
+233) Common Anti-pattern — no reconciliation
+Webhookหายแล้ว Stateค้างตลอด
+234) Common Anti-pattern — rate limiter blocks OPTIONS/auth health endpointsมั่ว
+อาจทำ Appพังเอง
+
+Policiesต้อง endpoint-aware
+235) Common Anti-pattern — retry every error
+4xx permanent errorsไม่ควรถูก retryเหมือน 503
+236) Common Anti-pattern — return detailed abuse rules
+Attacker optimizeโจมตีง่ายขึ้น
+237) End-to-End OTP Flow
+POST /otp/send
+↓
+validate target
+↓
+rate limit:
+  IP
+  account/phone
+  global
+↓
+generate secure OTP
+↓
+store hash + expiry + attempts
+↓
+send provider
+
+Verify:
+POST /otp/verify
+↓
+rate limit
+↓
+atomic attempt count
+↓
+verify hash
+↓
+check expiry/purpose
+↓
+atomic consume
+↓
+success
+
+238) End-to-End Webhook Flow
+Provider
+↓ HTTPS
+Webhook endpoint
+↓
+read raw body
+↓
+verify timestamp + HMAC
+↓
+check replay window
+↓
+validate event schema
+↓
+insert event ID with UNIQUE constraint
+↓
+commit inbox record
+↓
+return 2xx
+↓
+queue worker
+↓
+validate business state
+↓
+apply idempotent transition
+
+นี่คือ Flowที่ควรจำ
+239) End-to-End Idempotent API
+Client intent
+↓
+stable Idempotency-Key
+↓
+Server atomically claims key
+↓
+execute transaction once
+↓
+store result
+↓
+return
+
+Retry:
+same key
+↓
+same stored result
+
+240) Mental Model: Rate Limiting
+Rate Limit ไม่ได้ถามว่า Request ถูกหรือผิด แต่ถามว่า Clientกำลังใช้ Resourceเร็วเกินระดับที่ระบบยอมรับหรือไม่
+
+241) Mental Model: Abuse Prevention
+Userที่ผ่าน Authenticationแล้วก็ยังสามารถ Abuseระบบได้ จึงต้องมี Business Limits และ Resource Controlsเพิ่มจาก Authorization
+
+242) Mental Model: Idempotency
+Networkสามารถทำให้ Requestที่สำเร็จแล้วถูกส่งซ้ำ ดังนั้น Critical Side Effectsต้องออกแบบให้ Retryได้โดยไม่สร้างผลลัพธ์ซ้ำ
+
+243) Mental Model: Replay Protection
+Signatureพิสูจน์ว่า Messageเป็นของจริง แต่ Timestamp/Nonce/Event IDช่วยพิสูจน์ว่า Messageนั้นไม่ใช่ของจริงที่ถูกนำกลับมาใช้ซ้ำ
+
+244) Mental Model: Webhook
+Webhookคือ Public APIที่ External Systemสามารถเปลี่ยน Business Stateของเราได้ จึงต้อง Authenticate Sender, Reject Replay, Deduplicate และ Reconcile
+
+สรุป 7.9
+API Security ที่ดีต้องมีมากกว่า:
+Authentication
++
+Authorization
+
+แต่ต้องเพิ่ม:
+Rate Limiting
+Abuse Prevention
+Quota / Concurrency
+Idempotency
+Replay Protection
+Audit / Monitoring
+
+สำหรับ Webhook ควรคิด Flow:
+HTTPS
+↓
+Signature/HMAC
+↓
+Timestamp
+↓
+Replay check
+↓
+Event ID dedup
+↓
+Schema validation
+↓
+Durable persist
+↓
+Async processing
+↓
+Reconciliation
+
+สิ่งที่ต้องจำที่สุดคือ:
+Request ที่ Authenticate ถูกต้องไม่ได้แปลว่าปลอดภัยเสมอไป เพราะ Clientอาจเรียกมากเกินไป, ส่งซ้ำ, Abuse Business Logic หรือ Replay Requestเก่าที่เคย valid ได้
+
+ดังนั้น API ที่พร้อมใช้ใน Productionต้องรับมือทั้ง ผู้โจมตี, Bot, Network Retry, Client Bug และ Userที่ใช้ Featureผิดเจตนา ได้ด้วย
+
+
