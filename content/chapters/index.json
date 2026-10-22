@@ -42,6 +42,13 @@
       "title": "Server / Linux / Deployment / DevOps",
       "summary": "เมื่อเรียนจบแล้ว จะเข้าใจว่าเว็บจากเครื่อง Developer ถูกนำขึ้น Production อย่างไร ตั้งแต่โครงสร้าง Server, Linux, Process, Port, Network, Nginx, Reverse Proxy, Load Balancer, Node.js/PM2/systemd, PHP/PHP-FPM, Worker/Supervisor, Docker, Environment Variables, SSL/HTTPS, Domain/DNS, Logging, Monitoring, CI/CD, Deployment, Restart/Rollback ไปจนถึงการดูแลระบบให้รันต่อเนื่องและแก้ปัญหาเมื่อ Production มีปัญหาได้อย่างเป็นระบบ",
       "status": "ready"
+    },
+    {
+      "id": "7",
+      "slug": "7",
+      "title": "Security & System Design",
+      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจการออกแบบระบบให้ ปลอดภัย รองรับการ Scale และทนต่อความผิดพลาด ตั้งแต่ Authentication, Authorization, XSS, CSRF, SQL Injection, Secrets ไปจนถึง Load Balancer, Cache, Database, Queue, High Availability และ Distributed Systems.",
+      "status": "ready"
     }
   ]
 }
