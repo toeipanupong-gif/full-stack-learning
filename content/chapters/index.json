@@ -49,6 +49,13 @@
       "title": "Security & System Design",
       "summary": "เมื่อเรียนจบแล้ว จะเข้าใจการออกแบบระบบให้ ปลอดภัย รองรับการ Scale และทนต่อความผิดพลาด ตั้งแต่ Authentication, Authorization, XSS, CSRF, SQL Injection, Secrets ไปจนถึง Load Balancer, Cache, Database, Queue, High Availability และ Distributed Systems.",
       "status": "ready"
+    },
+    {
+      "id": "8",
+      "slug": "8",
+      "title": "AI for Software Development",
+      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจวิธีใช้ AI ช่วยงานพัฒนา Software ตั้งแต่การวิเคราะห์ Requirement, เขียน/รีวิว/Debug Code, ออกแบบระบบ, เขียน Test และช่วยค้นปัญหาได้อย่างมีประสิทธิภาพ พร้อมรู้ข้อจำกัดและความเสี่ยงของ AI เช่น Hallucination, Code ที่ผิดหรือไม่ปลอดภัย, Dependency/ข้อมูลที่ล้าสมัย และการรั่วของ Secrets/ข้อมูลลูกค้า ที่สำคัญคือจะรู้วิธีใช้ AI แบบ Assistant, not Authority",
+      "status": "ready"
     }
   ]
 }
