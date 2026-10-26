@@ -5,70 +5,70 @@
       "id": "1",
       "slug": "1",
       "title": "Web & Programming Fundamentals",
-      "summary": "เมื่อเรียนจบแล้ว เราควรสามารถมอง Web Application หนึ่งระบบแล้วอธิบายได้ว่า ผู้ใช้เปิด Browser แล้วข้อมูลเดินทางผ่าน DNS, Internet, HTTP ไปถึง Server และ Database จน Browser แสดงผล",
+      "summary": "เข้าใจพื้นฐานการเขียนโปรแกรมและเส้นทางข้อมูลของเว็บ ตั้งแต่ Browser ส่งคำขอจนแสดงผล",
       "status": "ready"
     },
     {
       "id": "2",
       "slug": "2",
       "title": "Frontend Development",
-      "summary": "เมื่อเรียนจบแล้ว เราควรสามารถสร้าง Frontend ด้วย React/Next.js ได้แบบ “เข้าใจว่าระบบทำงานอย่างไร” ไม่ใช่แค่เขียน Component ให้แสดงผลได้ และควรเริ่มสามารถมอง Code Frontend แล้ววิเคราะห์ได้ว่า ข้อมูลมาจากไหน, State ควรอยู่ตรงไหน, Code ควรรัน Server หรือ Client, ทำไม Component Render ใหม่ และจุดไหนน่าจะเป็นปัญหา Performance.",
+      "summary": "สร้างหน้าเว็บด้วย React และ Next.js พร้อมเข้าใจการแสดงผล การจัดการข้อมูล และ State",
       "status": "ready"
     },
     {
       "id": "3",
       "slug": "3",
       "title": "Backend Development + PHP / Laravel",
-      "summary": "เมื่อเรียนจบแล้ว เราจะเข้าใจภาพรวมตั้งแต่ “Request เข้ามา” จนถึง “Backend ทำงานเสร็จและตอบกลับ” รวมถึงเขียน Laravel เป็นระบบได้",
+      "summary": "เข้าใจการทำงานของ Backend ตั้งแต่รับคำขอจนตอบกลับ และพัฒนา API ด้วย PHP และ Laravel",
       "status": "ready"
     },
     {
       "id": "4",
       "slug": "4",
       "title": "Database & Data Storage",
-      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจการออกแบบฐานข้อมูล, SQL, Relationship, JOIN, Index และการเลือกใช้ MySQL/PostgreSQL เข้าใจ Transaction, ACID, Isolation, Lock, Deadlock และปัญหาข้อมูลชนกัน รู้จัก NoSQL, Redis, MongoDB, Elasticsearch รวมถึง Scaling, Replication, Backup และ Recovery",
+      "summary": "ออกแบบฐานข้อมูล เขียน SQL และเข้าใจวิธีดูแลความถูกต้องกับประสิทธิภาพของข้อมูล",
       "status": "ready"
     },
     {
       "id": "5",
       "slug": "5",
       "title": "Concurrency, Race Condition & Distributed Coordination",
-      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจว่าระบบที่มีหลาย Request, Worker หรือ Server ทำงานพร้อมกันเกิดปัญหาอะไรได้บ้าง เช่น Race Condition, Deadlock และ Lost Update รวมถึงวิธีแก้ด้วย Lock, Mutex, Semaphore, Atomic Operation, Optimistic/Pessimistic Lock, Idempotency และ Distributed Lock เพื่อออกแบบระบบที่ถูกต้องและปลอดภัยภายใต้การทำงานพร้อมกัน",
+      "summary": "รู้จักปัญหาเมื่อหลายงานทำพร้อมกัน และใช้ Lock กับ Idempotency เพื่อป้องกันข้อมูลผิดพลาด",
       "status": "ready"
     },
     {
       "id": "6",
       "slug": "6",
       "title": "Server / Linux / Deployment / DevOps",
-      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจว่าเว็บจากเครื่อง Developer ถูกนำขึ้น Production อย่างไร ตั้งแต่โครงสร้าง Server, Linux, Process, Port, Network, Nginx, Reverse Proxy, Load Balancer, Node.js/PM2/systemd, PHP/PHP-FPM, Worker/Supervisor, Docker, Environment Variables, SSL/HTTPS, Domain/DNS, Logging, Monitoring, CI/CD, Deployment, Restart/Rollback ไปจนถึงการดูแลระบบให้รันต่อเนื่องและแก้ปัญหาเมื่อ Production มีปัญหาได้อย่างเป็นระบบ",
+      "summary": "เข้าใจพื้นฐาน Linux และ Server การนำเว็บขึ้นใช้งานจริง และการดูแลระบบเมื่อเกิดปัญหา",
       "status": "ready"
     },
     {
       "id": "7",
       "slug": "7",
       "title": "Security & System Design",
-      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจการออกแบบระบบให้ ปลอดภัย รองรับการ Scale และทนต่อความผิดพลาด ตั้งแต่ Authentication, Authorization, XSS, CSRF, SQL Injection, Secrets ไปจนถึง Load Balancer, Cache, Database, Queue, High Availability และ Distributed Systems.",
+      "summary": "ป้องกันช่องโหว่เว็บและออกแบบระบบให้ปลอดภัย รองรับผู้ใช้มากขึ้น และทนต่อความผิดพลาด",
       "status": "ready"
     },
     {
       "id": "8",
       "slug": "8",
       "title": "AI for Software Development",
-      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจวิธีใช้ AI ช่วยงานพัฒนา Software ตั้งแต่การวิเคราะห์ Requirement, เขียน/รีวิว/Debug Code, ออกแบบระบบ, เขียน Test และช่วยค้นปัญหาได้อย่างมีประสิทธิภาพ พร้อมรู้ข้อจำกัดและความเสี่ยงของ AI เช่น Hallucination, Code ที่ผิดหรือไม่ปลอดภัย, Dependency/ข้อมูลที่ล้าสมัย และการรั่วของ Secrets/ข้อมูลลูกค้า ที่สำคัญคือจะรู้วิธีใช้ AI แบบ Assistant, not Authority",
+      "summary": "ใช้ AI ช่วยเขียน ตรวจ และแก้โค้ด พร้อมตรวจสอบความถูกต้องและระวังข้อมูลสำคัญ",
       "status": "ready"
     },
     {
       "id": "9",
       "slug": "9",
       "title": "Cloud Services & Cloud Architecture",
-      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจภาพรวมการใช้งาน Cloud ตั้งแต่ IaaS, PaaS, SaaS, Serverless/FaaS, Compute, Storage, Managed Database, Redis, CDN, DNS, Load Balancer, Auto Scaling, VPC, Subnet, NAT, Firewall, IAM, Secrets, Queue และ Monitoring รวมถึงรู้ว่า AWS, GCP และ Azure มีบริการกลุ่มไหนไว้ทำอะไร และควรเลือกใช้แบบไหนตาม Use Case พร้อมเข้าใจเรื่อง High Availability, Backup/Disaster Recovery, Security, Cost และ Infrastructure as Code เพื่อออกแบบระบบ Cloud สำหรับ Production ได้อย่างเป็นระบบ",
+      "summary": "เข้าใจบริการ Cloud และเลือกใช้ Compute, Storage และเครือข่ายให้เหมาะกับระบบและค่าใช้จ่าย",
       "status": "ready"
     },
     {
       "id": "10",
       "slug": "10",
       "title": "Production Server Setup & Deployment Architecture",
-      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจภาพรวมการนำระบบขึ้น Production ตั้งแต่ Domain/DNS, Nginx, Node.js/Next.js, PHP/Laravel, Database, Redis, Queue/Worker, Cron, SSL/TLS, Firewall, Environment/Secrets, Logging, Monitoring, Backup และ CI/CD รวมถึงวิธีจัดวางแต่ละส่วนให้ทำงานร่วมกันอย่างปลอดภัยและเสถียร พร้อมเข้าใจแนวทาง Deploy, Rollback, Scale และแก้ปัญหาพื้นฐานบน Serverจริงได้",
+      "summary": "จัดวางส่วนประกอบของระบบ Production ให้ทำงานร่วมกัน และวางแผน Deploy, Rollback กับการสำรองข้อมูล",
       "status": "ready"
     }
   ]
