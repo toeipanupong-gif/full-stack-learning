@@ -56,6 +56,20 @@
       "title": "AI for Software Development",
       "summary": "เมื่อเรียนจบแล้ว จะเข้าใจวิธีใช้ AI ช่วยงานพัฒนา Software ตั้งแต่การวิเคราะห์ Requirement, เขียน/รีวิว/Debug Code, ออกแบบระบบ, เขียน Test และช่วยค้นปัญหาได้อย่างมีประสิทธิภาพ พร้อมรู้ข้อจำกัดและความเสี่ยงของ AI เช่น Hallucination, Code ที่ผิดหรือไม่ปลอดภัย, Dependency/ข้อมูลที่ล้าสมัย และการรั่วของ Secrets/ข้อมูลลูกค้า ที่สำคัญคือจะรู้วิธีใช้ AI แบบ Assistant, not Authority",
       "status": "ready"
+    },
+    {
+      "id": "9",
+      "slug": "9",
+      "title": "Cloud Services & Cloud Architecture",
+      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจภาพรวมการใช้งาน Cloud ตั้งแต่ IaaS, PaaS, SaaS, Serverless/FaaS, Compute, Storage, Managed Database, Redis, CDN, DNS, Load Balancer, Auto Scaling, VPC, Subnet, NAT, Firewall, IAM, Secrets, Queue และ Monitoring รวมถึงรู้ว่า AWS, GCP และ Azure มีบริการกลุ่มไหนไว้ทำอะไร และควรเลือกใช้แบบไหนตาม Use Case พร้อมเข้าใจเรื่อง High Availability, Backup/Disaster Recovery, Security, Cost และ Infrastructure as Code เพื่อออกแบบระบบ Cloud สำหรับ Production ได้อย่างเป็นระบบ",
+      "status": "ready"
+    },
+    {
+      "id": "10",
+      "slug": "10",
+      "title": "Production Server Setup & Deployment Architecture",
+      "summary": "เมื่อเรียนจบแล้ว จะเข้าใจภาพรวมการนำระบบขึ้น Production ตั้งแต่ Domain/DNS, Nginx, Node.js/Next.js, PHP/Laravel, Database, Redis, Queue/Worker, Cron, SSL/TLS, Firewall, Environment/Secrets, Logging, Monitoring, Backup และ CI/CD รวมถึงวิธีจัดวางแต่ละส่วนให้ทำงานร่วมกันอย่างปลอดภัยและเสถียร พร้อมเข้าใจแนวทาง Deploy, Rollback, Scale และแก้ปัญหาพื้นฐานบน Serverจริงได้",
+      "status": "ready"
     }
   ]
 }

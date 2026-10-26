@@ -1,5 +1,0 @@
-9. Cloud Services & Cloud Architecture
-
-เมื่อเรียนจบแล้ว จะเข้าใจภาพรวมการใช้งาน Cloud ตั้งแต่ IaaS, PaaS, SaaS, Serverless/FaaS, Compute, Storage, Managed Database, Redis, CDN, DNS, Load Balancer, Auto Scaling, VPC, Subnet, NAT, Firewall, IAM, Secrets, Queue และ Monitoring รวมถึงรู้ว่า AWS, GCP และ Azure มีบริการกลุ่มไหนไว้ทำอะไร และควรเลือกใช้แบบไหนตาม Use Case พร้อมเข้าใจเรื่อง High Availability, Backup/Disaster Recovery, Security, Cost และ Infrastructure as Code เพื่อออกแบบระบบ Cloud สำหรับ Production ได้อย่างเป็นระบบ
-
-
