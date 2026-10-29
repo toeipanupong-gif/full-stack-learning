@@ -830,7 +830,7 @@
         },
         {
           "type": "paragraph",
-          "text": "Git บันทึกการเปลี่ยนแปลงเป็น commit ใน repository ไฟล์เริ่มที่ working directory, เลือกเข้ staging area แล้วจึง commit พร้อมข้อความบอกเหตุผลของการแก้"
+          "text": "Git บันทึกการเปลี่ยนแปลงเป็น commit ใน repository ไฟล์เริ่มที่ working directory, เลือกเข้า staging area แล้วจึง commit พร้อมข้อความบอกเหตุผลของการแก้"
         },
         {
           "type": "code",
